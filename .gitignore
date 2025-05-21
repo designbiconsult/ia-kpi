@@ -17,3 +17,6 @@ venv/
 # Arquivos de configuração locais
 *.toml
 *.log
+
+/database_local.sqlite
+
