@@ -1,0 +1,19 @@
+# Ignorar arquivos e pastas temporárias
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignorar banco de dados local
+data/*.db
+
+# Ignorar ambientes virtuais
+.venv/
+env/
+venv/
+
+# Arquivos do Streamlit
+.streamlit/
+
+# Arquivos de configuração locais
+*.toml
+*.log
