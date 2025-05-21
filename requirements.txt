@@ -1,9 +1,9 @@
 streamlit
+pandas==1.5.3
 sqlalchemy
 pymysql
-pandas
+matplotlib==3.6.3
+requests==2.31.0
 langchain
-langchain-community
-langchain-openai
+tiktoken
 openai
-tqdm
