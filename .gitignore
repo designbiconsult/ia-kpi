@@ -1,22 +1,12 @@
-# Ignorar arquivos e pastas temporárias
+# Ignorar arquivos de banco
+*.db
+data/*.db
+
+# Ignorar caches
 __pycache__/
 *.pyc
-*.pyo
-
-# Ignorar banco de dados local
-data/*.db
 
 # Ignorar ambientes virtuais
 .venv/
 env/
 venv/
-
-# Arquivos do Streamlit
-.streamlit/
-
-# Arquivos de configuração locais
-*.toml
-*.log
-
-/database_local.sqlite
-
