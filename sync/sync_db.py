@@ -1,26 +1,20 @@
-import os
-import pandas as pd
-import sqlite3
-from sqlalchemy import create_engine, inspect
-import streamlit as st
-
 def sync_mysql_to_sqlite():
     """
-    Sincroniza todas as views do schema especificado de um banco MySQL para um banco SQLite local,
-    usando as credenciais fornecidas pelo usuário via Streamlit.
+    Sincroniza todas as views e tabelas do schema especificado de um banco MySQL para um banco SQLite local,
+    usando as credenciais fornecidas via Streamlit.
     """
-    # Captura as credenciais via Streamlit
+    import os
+    import pandas as pd
+    import sqlite3
+    from sqlalchemy import create_engine, inspect
+    import streamlit as st
+
     mysql_host = st.session_state.get("mysql_host")
+    mysql_port = st.session_state.get("mysql_port")
     mysql_user = st.session_state.get("mysql_user")
     mysql_password = st.session_state.get("mysql_password")
     mysql_database = st.session_state.get("mysql_database")
     output_sqlite_path = st.session_state.get("sqlite_path", "data/cliente_dados.db")
-
-    try:
-        mysql_port = int(st.session_state.get("mysql_port"))
-    except (ValueError, TypeError):
-        st.error("⚠️ A porta deve ser um número inteiro válido.")
-        return
 
     if not all([mysql_host, mysql_port, mysql_user, mysql_password, mysql_database]):
         st.error("Credenciais incompletas. Verifique a conexão antes de sincronizar.")
@@ -34,18 +28,19 @@ def sync_mysql_to_sqlite():
     sqlite_conn = sqlite3.connect(output_sqlite_path)
 
     try:
+        # Junta views e tabelas
         views = inspector.get_view_names(schema=mysql_database)
+        tabelas = inspector.get_table_names(schema=mysql_database)
+        entidades = views + tabelas
 
-        for view in views:
-            st.write(f"🔄 Sincronizando view: {view}...")
-            df = pd.read_sql(f"SELECT * FROM `{mysql_database}`.`{view}`", mysql_engine)
-            df.to_sql(view, con=sqlite_conn, if_exists="replace", index=False)
+        for nome in entidades:
+            st.write(f"🔄 Sincronizando: {nome}")
+            df = pd.read_sql(f"SELECT * FROM `{mysql_database}`.`{nome}`", mysql_engine)
+            df.to_sql(nome, con=sqlite_conn, if_exists="replace", index=False)
 
-        st.success("✅ Sincronização concluída com sucesso.")
-
+        st.success("✅ Sincronização de views e tabelas concluída com sucesso.")
     except Exception as e:
-        st.error(f"❌ Erro ao sincronizar views: {e}")
-
+        st.error(f"❌ Erro ao sincronizar: {e}")
     finally:
         sqlite_conn.close()
         mysql_engine.dispose()
