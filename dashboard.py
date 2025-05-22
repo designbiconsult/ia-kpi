@@ -190,7 +190,7 @@ elif st.session_state["logado"] and st.session_state["pagina"] == "dashboard":
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao salvar conexão: {e}")
-    else:
+else:
     st.session_state["mysql_host"] = st.session_state["usuario"]["host"]
     st.session_state["mysql_port"] = st.session_state["usuario"]["porta"]
     st.session_state["mysql_user"] = st.session_state["usuario"]["usuario_banco"]
