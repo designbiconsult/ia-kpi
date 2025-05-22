@@ -96,7 +96,9 @@ def carregar_indicadores(sqlite_path):
         st.pyplot(fig)
 
     except Exception as e:
-        st.error(f"Erro ao carregar indicadores: {e}")
+        st.error(f"❌ Erro ao carregar indicadores: {e}")
+    st.exception(e)
+
 
 # === Login
 if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
@@ -206,6 +208,11 @@ elif st.session_state["logado"] and st.session_state["pagina"] == "dashboard":
 
 
         carregar_indicadores(st.session_state["sqlite_path"])
+        if os.path.exists(st.session_state["sqlite_path"]):
+            st.sidebar.success("📁 Banco sincronizado com sucesso!")
+        else:
+            st.sidebar.error("❌ Banco local SQLite não encontrado.")
+
 
         st.subheader("Faça sua pergunta à IA")
         pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?")
