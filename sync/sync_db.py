@@ -44,3 +44,43 @@ def sync_mysql_to_sqlite():
     finally:
         sqlite_conn.close()
         mysql_engine.dispose()
+def salvar_estrutura_dinamica(sqlite_path):
+    """
+    Extrai a estrutura das tabelas do SQLite e salva em uma tabela chamada estrutura_dinamica.
+    """
+    conn = sqlite3.connect(sqlite_path)
+    c = conn.cursor()
+
+    # Cria a tabela se não existir
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS estrutura_dinamica (
+            tabela TEXT,
+            coluna TEXT,
+            tipo TEXT,
+            exemplo TEXT,
+            descricao TEXT
+        )
+    """)
+
+    # Limpa dados anteriores
+    c.execute("DELETE FROM estrutura_dinamica")
+
+    cursor = conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'")
+    tabelas = [row[0] for row in cursor.fetchall()]
+
+    for tabela in tabelas:
+        colunas = conn.execute(f"PRAGMA table_info('{tabela}')").fetchall()
+        exemplo = conn.execute(f"SELECT * FROM {tabela} LIMIT 1").fetchone()
+
+        for idx, col in enumerate(colunas):
+            nome = col[1]
+            tipo = col[2]
+            valor_exemplo = str(exemplo[idx]) if exemplo else "Exemplo indisponível"
+            descricao = f"Coluna '{nome}' da tabela '{tabela}' com tipo {tipo}"
+            c.execute("""
+                INSERT INTO estrutura_dinamica (tabela, coluna, tipo, exemplo, descricao)
+                VALUES (?, ?, ?, ?, ?)
+            """, (tabela, nome, tipo, valor_exemplo, descricao))
+
+    conn.commit()
+    conn.close()
