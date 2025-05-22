@@ -4,7 +4,7 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 from app.query_handler import executar_pergunta
-from sync.sync_db import sync_mysql_to_sqlite
+from sync.sync_db import sync_mysql_to_sqlite, salvar_estrutura_dinamica
 
 DB_PATH = "data/database.db"
 os.makedirs("data", exist_ok=True)
@@ -29,6 +29,7 @@ conn.commit()
 
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
+# Estados de sessão
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
 if "pagina" not in st.session_state:
@@ -42,35 +43,38 @@ def autenticar(email, senha):
     conn.close()
     return resultado
 
-def carregar_indicadores(sqlite_path, data_inicial, data_final):
+def carregar_indicadores(sqlite_path, mes_ano):
     try:
         conn = sqlite3.connect(sqlite_path)
 
-        total_modelos = pd.read_sql("""
+        # Indicador: modelos produzidos distintos por REFERENCIA_PRODUTO no mês selecionado
+        total_modelos = pd.read_sql(f"""
             SELECT COUNT(DISTINCT PROD.REFERENCIA_PRODUTO) AS total_modelos
             FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
             JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
             WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
-              AND ITEM.DATA_MOVIMENTACAO BETWEEN ? AND ?
-        """, conn, params=[data_inicial, data_final])["total_modelos"][0]
+              AND strftime('%Y-%m', ITEM.DATA_MOVIMENTACAO) = '{mes_ano}'
+        """, conn)["total_modelos"][0]
 
-        qtd_total = pd.read_sql("""
+        # Produzido no mês selecionado
+        qtd_mes = pd.read_sql(f"""
             SELECT SUM(QTD_MOVIMENTACAO) as total
             FROM VW_CTO_ORDEM_PRODUCAO_ITEM
             WHERE TIPO_MOVIMENTACAO = 'Produzida'
-              AND DATA_MOVIMENTACAO BETWEEN ? AND ?
-        """, conn, params=[data_inicial, data_final])["total"][0] or 0
+              AND strftime('%Y-%m', DATA_MOVIMENTACAO) = '{mes_ano}'
+        """, conn)["total"][0] or 0
 
+        # Produto mais produzido nos últimos 3 meses
         produto_top = pd.read_sql("""
             SELECT ITEM.CODIGO_INTERNO_PRODUTO, PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
             FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
             LEFT JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
             WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
-              AND ITEM.DATA_MOVIMENTACAO BETWEEN ? AND ?
+              AND ITEM.DATA_MOVIMENTACAO >= date('now', '-3 months')
             GROUP BY ITEM.CODIGO_INTERNO_PRODUTO
             ORDER BY total DESC
             LIMIT 1
-        """, conn, params=[data_inicial, data_final])
+        """, conn)
 
         nome_produto = produto_top["DESCRICAO_PRODUTO"][0] if not produto_top.empty else "Nenhum"
         qtd_produto = produto_top["total"][0] if not produto_top.empty else 0
@@ -79,32 +83,32 @@ def carregar_indicadores(sqlite_path, data_inicial, data_final):
             SELECT strftime('%Y-%m', DATA_MOVIMENTACAO) as mes, SUM(QTD_MOVIMENTACAO) as total
             FROM VW_CTO_ORDEM_PRODUCAO_ITEM
             WHERE TIPO_MOVIMENTACAO = 'Produzida'
-              AND DATA_MOVIMENTACAO BETWEEN ? AND ?
+              AND DATA_MOVIMENTACAO >= date('now', '-6 months')
             GROUP BY mes
             ORDER BY mes
-        """, conn, params=[data_inicial, data_final])
+        """, conn)
 
         conn.close()
 
-        st.subheader("📊 Indicadores básicos de Produção")
+        st.subheader("📊 Indicadores de Produção")
         col1, col2, col3 = st.columns(3)
         col1.metric("Modelos produzidos", total_modelos)
-        col2.metric("Peças produzidas", int(qtd_total))
-        col3.metric("Mais produzido", f"{nome_produto} ({int(qtd_produto)})")
+        col2.metric("Qtd produzida no mês", int(qtd_mes))
+        col3.metric("Mais produzido (3 meses)", f"{nome_produto} ({int(qtd_produto)})")
 
-        st.subheader("📈 Produção no período")
+        st.subheader("📈 Produção - últimos 6 meses")
         fig, ax = plt.subplots()
         ax.bar(grafico_df["mes"], grafico_df["total"])
         ax.set_ylabel("Qtd Produzida")
         ax.set_xlabel("Mês")
-        ax.set_title("Produção por mês")
+        ax.set_title("Produção Mensal")
         st.pyplot(fig)
 
     except Exception as e:
-        st.error("❌ Erro ao carregar indicadores.")
+        st.error(f"❌ Erro ao carregar indicadores: {e}")
         st.exception(e)
 
-# Login
+# === Login
 if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
     st.title("🔐 Login IA KPI")
     email = st.text_input("Email")
@@ -134,7 +138,7 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
         st.session_state["pagina"] = "cadastro"
         st.rerun()
 
-# Cadastro
+# === Cadastro
 elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]:
     st.title("📊 Cadastro de Cliente IA KPI")
     with st.form("cadastro_form"):
@@ -148,7 +152,10 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
                 st.error("Preencha todos os campos.")
             else:
                 try:
-                    c.execute("INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)", (nome, email, senha))
+                    c.execute(
+                        "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
+                        (nome, email, senha)
+                    )
                     conn.commit()
                     st.success("Cadastro realizado com sucesso! Faça login para continuar.")
                     st.session_state["pagina"] = "login"
@@ -156,7 +163,7 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
                 except sqlite3.IntegrityError:
                     st.error("Este email já está cadastrado.")
 
-# Dashboard
+# === Dashboard
 elif st.session_state["logado"] and st.session_state["pagina"] == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
 
@@ -172,11 +179,14 @@ elif st.session_state["logado"] and st.session_state["pagina"] == "dashboard":
 
             if submitted:
                 try:
+                    conn = sqlite3.connect(DB_PATH)
+                    c = conn.cursor()
                     c.execute(
                         "UPDATE usuarios SET host = ?, porta = ?, usuario_banco = ?, senha_banco = ?, schema = ? WHERE id = ?",
                         (host, porta, usuario_banco, senha_banco, schema, st.session_state["usuario"]["id"])
                     )
                     conn.commit()
+                    conn.close()
                     st.session_state["usuario"].update({
                         "host": host,
                         "porta": porta,
@@ -196,30 +206,38 @@ elif st.session_state["logado"] and st.session_state["pagina"] == "dashboard":
         st.session_state["mysql_database"] = st.session_state["usuario"]["schema"]
         st.session_state["sqlite_path"] = f"data/cliente_{st.session_state['usuario']['id']}.db"
 
-        # Re-sincronizar banco
+        # Re-sincronizar dados
         with st.sidebar:
+            st.markdown("---")
             if st.button("🔄 Re-sincronizar dados"):
                 with st.spinner("Sincronizando dados do banco..."):
                     sync_mysql_to_sqlite()
+                    salvar_estrutura_dinamica(st.session_state["sqlite_path"])
                     st.success("Dados atualizados com sucesso!")
                     st.rerun()
 
-        # Filtro de datas
-        st.markdown("### 📅 Selecione o período de análise")
-        col1, col2 = st.columns(2)
-        data_inicial = col1.date_input("Data inicial", pd.to_datetime("today").replace(day=1))
-        data_final = col2.date_input("Data final", pd.to_datetime("today"))
+        # Selecione o mês/ano para indicadores
+        st.subheader("📅 Selecione o período")
+        data = st.date_input("Filtrar por data de movimentação", pd.to_datetime("today"))
+        mes_ano = data.strftime("%Y-%m")
 
-        # Indicadores
-        carregar_indicadores(st.session_state["sqlite_path"], str(data_inicial), str(data_final))
+        carregar_indicadores(st.session_state["sqlite_path"], mes_ano)
 
-        # Pergunta à IA
-        st.subheader("Faça sua pergunta à IA")
-        pergunta = st.text_input("Exemplo: Qual o produto mais produzido no período selecionado?")
+        try:
+            conn_debug = sqlite3.connect(st.session_state["sqlite_path"])
+            tabelas = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", conn_debug)
+            st.sidebar.subheader("📚 Tabelas no banco local:")
+            st.sidebar.write(tabelas)
+            conn_debug.close()
+        except Exception as e:
+            st.sidebar.error(f"Erro ao acessar banco local: {e}")
+
+        st.subheader("💬 Faça sua pergunta à IA")
+        pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?")
         if st.button("🧠 Consultar IA"):
             executar_pergunta(pergunta, st.session_state["sqlite_path"])
 
-        if st.sidebar.button("Sair"):
+        if st.sidebar.button("🚪 Sair"):
             st.session_state["logado"] = False
             st.session_state["pagina"] = "login"
             st.rerun()

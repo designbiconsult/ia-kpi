@@ -87,3 +87,11 @@ def mapear_estrutura_banco(mysql_host, mysql_port, mysql_user, mysql_password, m
         print("✅ Estrutura mapeada com sucesso.")
     except Exception as e:
         print(f"❌ Erro ao mapear estrutura: {e}")
+def iniciar_mapeamento_via_streamlit():
+    mysql_host = st.session_state.get("mysql_host")
+    mysql_port = st.session_state.get("mysql_port")
+    mysql_user = st.session_state.get("mysql_user")
+    mysql_password = st.session_state.get("mysql_password")
+    mysql_database = st.session_state.get("mysql_database")
+
+    mapear_estrutura_banco(mysql_host, mysql_port, mysql_user, mysql_password, mysql_database)
