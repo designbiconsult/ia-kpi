@@ -4,6 +4,7 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 from app.query_handler import executar_pergunta
+from sync.sync_db import sync_mysql_to_sqlite
 
 DB_PATH = "data/database.db"
 os.makedirs("data", exist_ok=True)
@@ -194,6 +195,15 @@ elif st.session_state["logado"] and st.session_state["pagina"] == "dashboard":
         st.session_state["mysql_password"] = st.session_state["usuario"]["senha_banco"]
         st.session_state["mysql_database"] = st.session_state["usuario"]["schema"]
         st.session_state["sqlite_path"] = f"data/cliente_{st.session_state['usuario']['id']}.db"
+        
+        with st.sidebar:
+            st.markdown("---")
+    if st.button("🔄 Re-sincronizar dados"):
+        with st.spinner("Sincronizando dados do banco..."):
+            sync_mysql_to_sqlite()
+            st.success("Dados atualizados com sucesso!")
+            st.rerun()
+
 
         carregar_indicadores(st.session_state["sqlite_path"])
 
