@@ -208,18 +208,26 @@ elif st.session_state["logado"] and st.session_state["pagina"] == "dashboard":
 
 
         carregar_indicadores(st.session_state["sqlite_path"])
-        if os.path.exists(st.session_state["sqlite_path"]):
+try:
+    conn_debug = sqlite3.connect(st.session_state["sqlite_path"])
+    tabelas = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", conn_debug)
+    st.sidebar.subheader("📚 Tabelas no banco local:")
+    st.sidebar.write(tabelas)
+    conn_debug.close()
+except Exception as e:
+    st.sidebar.error(f"Erro ao acessar banco local: {e}")
+    if os.path.exists(st.session_state["sqlite_path"]):
             st.sidebar.success("📁 Banco sincronizado com sucesso!")
-        else:
+    else:
             st.sidebar.error("❌ Banco local SQLite não encontrado.")
 
 
-        st.subheader("Faça sua pergunta à IA")
-        pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?")
-        if st.button("🧠 Consultar IA"):
+            st.subheader("Faça sua pergunta à IA")
+            pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?")
+    if st.button("🧠 Consultar IA"):
             executar_pergunta(pergunta, st.session_state["sqlite_path"])
 
-        if st.sidebar.button("Sair"):
+    if st.sidebar.button("Sair"):
             st.session_state["logado"] = False
             st.session_state["pagina"] = "login"
             st.rerun()
