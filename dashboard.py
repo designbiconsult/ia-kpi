@@ -191,43 +191,48 @@ elif st.session_state["logado"] and st.session_state["pagina"] == "dashboard":
                 except Exception as e:
                     st.error(f"Erro ao salvar conexão: {e}")
     else:
-        st.session_state["mysql_host"] = st.session_state["usuario"]["host"]
-        st.session_state["mysql_port"] = st.session_state["usuario"]["porta"]
-        st.session_state["mysql_user"] = st.session_state["usuario"]["usuario_banco"]
-        st.session_state["mysql_password"] = st.session_state["usuario"]["senha_banco"]
-        st.session_state["mysql_database"] = st.session_state["usuario"]["schema"]
-        st.session_state["sqlite_path"] = f"data/cliente_{st.session_state['usuario']['id']}.db"
-        
-        with st.sidebar:
-            st.markdown("---")
-    if st.button("🔄 Re-sincronizar dados"):
-        with st.spinner("Sincronizando dados do banco..."):
-            sync_mysql_to_sqlite()
-            st.success("Dados atualizados com sucesso!")
-            st.rerun()
+    st.session_state["mysql_host"] = st.session_state["usuario"]["host"]
+    st.session_state["mysql_port"] = st.session_state["usuario"]["porta"]
+    st.session_state["mysql_user"] = st.session_state["usuario"]["usuario_banco"]
+    st.session_state["mysql_password"] = st.session_state["usuario"]["senha_banco"]
+    st.session_state["mysql_database"] = st.session_state["usuario"]["schema"]
+    st.session_state["sqlite_path"] = f"data/cliente_{st.session_state['usuario']['id']}.db"
 
+    # Botão lateral para re-sincronizar
+    with st.sidebar:
+        st.markdown("---")
+        if st.button("🔄 Re-sincronizar dados"):
+            with st.spinner("Sincronizando dados do banco..."):
+                sync_mysql_to_sqlite()
+                st.success("Dados atualizados com sucesso!")
+                st.rerun()
 
-        carregar_indicadores(st.session_state["sqlite_path"])
-try:
-    conn_debug = sqlite3.connect(st.session_state["sqlite_path"])
-    tabelas = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", conn_debug)
-    st.sidebar.subheader("📚 Tabelas no banco local:")
-    st.sidebar.write(tabelas)
-    conn_debug.close()
-except Exception as e:
-    st.sidebar.error(f"Erro ao acessar banco local: {e}")
-    if os.path.exists(st.session_state["sqlite_path"]):
+    # Indicadores
+    carregar_indicadores(st.session_state["sqlite_path"])
+
+    # Diagnóstico: tabelas no SQLite
+    try:
+        conn_debug = sqlite3.connect(st.session_state["sqlite_path"])
+        tabelas = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", conn_debug)
+        st.sidebar.subheader("📚 Tabelas no banco local:")
+        st.sidebar.write(tabelas)
+        conn_debug.close()
+
+        if os.path.exists(st.session_state["sqlite_path"]):
             st.sidebar.success("📁 Banco sincronizado com sucesso!")
-    else:
+        else:
             st.sidebar.error("❌ Banco local SQLite não encontrado.")
+    except Exception as e:
+        st.sidebar.error(f"Erro ao acessar banco local: {e}")
 
-
-            st.subheader("Faça sua pergunta à IA")
-            pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?")
+    # Entrada da IA
+    st.subheader("Faça sua pergunta à IA")
+    pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?")
     if st.button("🧠 Consultar IA"):
-            executar_pergunta(pergunta, st.session_state["sqlite_path"])
+        executar_pergunta(pergunta, st.session_state["sqlite_path"])
 
     if st.sidebar.button("Sair"):
-            st.session_state["logado"] = False
-            st.session_state["pagina"] = "login"
-            st.rerun()
+        st.session_state["logado"] = False
+        st.session_state["pagina"] = "login"
+        st.rerun()
+
