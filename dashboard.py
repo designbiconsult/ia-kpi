@@ -30,7 +30,16 @@ with sqlite3.connect(DB_PATH, timeout=10) as conn:
             ultimo_sync TEXT
         )
     ''')
-    conn.commit()
+try:
+        c.execute("ALTER TABLE usuarios ADD COLUMN intervalo_sync INTEGER DEFAULT 60")
+except sqlite3.OperationalError:
+    pass
+try:
+    c.execute("ALTER TABLE usuarios ADD COLUMN ultimo_sync TEXT")
+except sqlite3.OperationalError:
+    pass
+conn.commit()
+
 
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
