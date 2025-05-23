@@ -236,12 +236,13 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
     # Atualiza variáveis de conexão na sessão SEMPRE
-    st.session_state["mysql_host"] = usuario["host"]
-    st.session_state["mysql_port"] = usuario["porta"]
-    st.session_state["mysql_user"] = usuario["usuario_banco"]
-    st.session_state["mysql_password"] = usuario["senha_banco"]
-    st.session_state["mysql_database"] = usuario["schema"]
-    st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
+    if usuario["host"] and usuario["porta"] and usuario["usuario_banco"]:
+        st.session_state["mysql_host"] = usuario["host"]
+        st.session_state["mysql_port"] = usuario["porta"]
+        st.session_state["mysql_user"] = usuario["usuario_banco"]
+        st.session_state["mysql_password"] = usuario["senha_banco"]
+        st.session_state["mysql_database"] = usuario["schema"]
+        st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
 
     if not usuario["host"]:
         st.warning("Configure a conexão com o banco de dados para continuar. (Menu lateral)")
@@ -307,7 +308,8 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
             carregar_indicadores(sqlite_path, data_inicio, data_fim)
 
         # Entrada IA
-        st.subheader("Faça sua pergunta à IA")
-        pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?")
-        if st.button("🧠 Consultar IA"):
-            executar_pergunta(pergunta, sqlite_path)
+        with st.form("pergunta_form"):
+            pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
+            submitted = st.form_submit_button("🧠 Consultar IA")
+            if submitted:
+                executar_pergunta(pergunta, sqlite_path)
