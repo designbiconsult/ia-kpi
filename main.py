@@ -19,10 +19,13 @@ c.execute('''
         porta TEXT,
         usuario_banco TEXT,
         senha_banco TEXT,
-        schema TEXT
+        schema TEXT,
+        intervalo_sync INTEGER DEFAULT 60,
+        ultimo_sync TEXT
     )
 ''')
 conn.commit()
+
 
 st.set_page_config(page_title="IA KPI - Cadastro", layout="centered")
 st.title("📊 IA KPI - Cadastro de Acesso")
