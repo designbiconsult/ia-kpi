@@ -24,6 +24,16 @@ c.execute('''
         ultimo_sync TEXT
     )
 ''')
+try:
+    c.execute("ALTER TABLE usuarios ADD COLUMN intervalo_sync INTEGER DEFAULT 60")
+except sqlite3.OperationalError:
+    pass
+try:
+    c.execute("ALTER TABLE usuarios ADD COLUMN ultimo_sync TEXT")
+except sqlite3.OperationalError:
+    pass
+conn.commit()
+
 conn.commit()
 
 
