@@ -1,46 +1,60 @@
+import requests
 import streamlit as st
-from app.agent import sync_mysql_to_sqlite_and_run_agent
-import pandas as pd
-import time
 
-def executar_pergunta(pergunta: str, sqlite_path: str):
+import os
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+
+def responder_pergunta_openrouter(pergunta, contexto=""):
     """
-    Executa a pergunta do usuário utilizando o modelo local e exibe o resultado do SQL sugerido,
-    com um contador de tempo visível.
+    Envia a pergunta para a OpenRouter AI e retorna a resposta.
+    contexto pode ser usado para passar informações sobre tabelas, colunas, etc.
     """
-    if not pergunta:
-        st.warning("Digite uma pergunta para continuar.")
-        return
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    # Monte a mensagem, incluindo contexto se desejar
+    prompt_usuario = pergunta
+    if contexto:
+        prompt_usuario += f"\n\nContexto:\n{contexto}"
 
-    st.subheader("⏱ Tempo de execução")
-    tempo = st.empty()
-    status = st.empty()
-    status.info("Consultando a IA...")
+    data = {
+        "model": "meta-llama/llama-3-70b-instruct",  # Pode trocar por outro modelo suportado
+        "messages": [
+            {"role": "user", "content": prompt_usuario}
+        ],
+        "max_tokens": 600,
+        "temperature": 0.2
+    }
+    resp = requests.post(url, json=data, headers=headers, timeout=60)
+    resp.raise_for_status()
+    resposta = resp.json()['choices'][0]['message']['content']
+    return resposta
 
-    start_time = time.time()
-    resultado = None
-
+def executar_pergunta(pergunta, sqlite_path):
+    """
+    Recebe a pergunta do usuário, gera contexto das tabelas e chama a IA.
+    """
+    # (Opcional) Montar um resumo das tabelas para dar contexto ao LLM
+    contexto = ""
     try:
-        # Mostra contador em tempo real enquanto executa a função
-        while resultado is None:
-            tempo.text(f"{int(time.time() - start_time)} segundos...")
-            resultado = sync_mysql_to_sqlite_and_run_agent(pergunta)
-            break
+        import sqlite3
+        import pandas as pd
+        with sqlite3.connect(sqlite_path, timeout=10) as conn:
+            # Exemplo: listar as tabelas e colunas para o LLM usar como base
+            estrutura = pd.read_sql("SELECT tabela, coluna, descricao FROM estrutura_dinamica LIMIT 30", conn)
+            linhas = []
+            for i, row in estrutura.iterrows():
+                linhas.append(f"Tabela: {row['tabela']} | Coluna: {row['coluna']} | {row['descricao']}")
+            contexto = "\n".join(linhas)
     except Exception as e:
-        st.error(f"Erro ao consultar a IA: {e}")
-        return
+        contexto = ""
 
-    if not resultado:
-        return
-
-    sqlite_engine, sql_code = resultado
-
-    st.subheader("📄 Consulta sugerida pela IA:")
-    st.code(sql_code, language="sql")
-
-    if st.button("Executar consulta"):
+    with st.spinner("Aguarde! A IA está pensando..."):
         try:
-            df_result = pd.read_sql(sql_code, con=sqlite_engine)
-            st.dataframe(df_result, use_container_width=True)
+            resposta = responder_pergunta_openrouter(pergunta, contexto=contexto)
+            st.success(resposta)
+            # Aqui você pode salvar pergunta/resposta no banco para aprendizado futuro!
         except Exception as e:
-            st.error(f"Erro ao executar SQL: {e}")
+            st.error(f"Erro ao acessar a OpenRouter: {e}")
