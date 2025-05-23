@@ -10,7 +10,9 @@ from sync.sync_db import sync_mysql_to_sqlite
 DB_PATH = "data/database.db"
 os.makedirs("data", exist_ok=True)
 
-# Criação e atualização do schema de usuários
+st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
+
+# Criação da tabela de usuários
 with sqlite3.connect(DB_PATH, timeout=10) as conn:
     c = conn.cursor()
     c.execute('''
@@ -23,26 +25,20 @@ with sqlite3.connect(DB_PATH, timeout=10) as conn:
             porta TEXT,
             usuario_banco TEXT,
             senha_banco TEXT,
-            schema TEXT
+            schema TEXT,
+            intervalo_sync INTEGER DEFAULT 60,
+            ultimo_sync TEXT
         )
     ''')
-    # Garante os campos extras mesmo se o banco já existir
-    try:
-        c.execute("ALTER TABLE usuarios ADD COLUMN intervalo_sync INTEGER DEFAULT 60")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        c.execute("ALTER TABLE usuarios ADD COLUMN ultimo_sync TEXT")
-    except sqlite3.OperationalError:
-        pass
     conn.commit()
 
-st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
-
+# ---- Flags de controle na sessão ----
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
 if "pagina" not in st.session_state:
     st.session_state["pagina"] = "login"
+if "sincronizar_pendente" not in st.session_state:
+    st.session_state["sincronizar_pendente"] = False
 
 def autenticar(email, senha):
     with sqlite3.connect(DB_PATH, timeout=10) as conn:
@@ -119,7 +115,7 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
         st.error(f"❌ Erro ao carregar indicadores: {e}")
         st.exception(e)
 
-# =================== SIDEBAR UNIVERSAL =====================
+# ======== SIDEBAR UNIVERSAL =======
 if st.session_state.get("logado"):
     with st.sidebar:
         st.markdown("---")
@@ -131,7 +127,7 @@ if st.session_state.get("logado"):
             st.session_state["pagina"] = "login"
             st.rerun()
 
-# ====================== LOGIN ==============================
+# ======== LOGIN =======
 if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
     st.title("🔐 Login IA KPI")
     email = st.text_input("Email")
@@ -152,12 +148,15 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
                 "intervalo_sync": usuario[9] or 60,
                 "ultimo_sync": usuario[10]
             }
+            # Sempre atualize variáveis de sessão para sync
             st.session_state["mysql_host"] = usuario[4]
             st.session_state["mysql_port"] = usuario[5]
             st.session_state["mysql_user"] = usuario[6]
             st.session_state["mysql_password"] = usuario[7]
             st.session_state["mysql_database"] = usuario[8]
             st.session_state["sqlite_path"] = f"data/cliente_{usuario[0]}.db"
+            # Ao logar, força sincronizar
+            st.session_state["sincronizar_pendente"] = True
             st.session_state["pagina"] = "dashboard"
             st.rerun()
         else:
@@ -169,7 +168,7 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
         st.session_state["pagina"] = "cadastro"
         st.rerun()
 
-# =================== CADASTRO ==============================
+# ======== CADASTRO =======
 elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]:
     st.title("📊 Cadastro de Cliente IA KPI")
     with st.form("cadastro_form"):
@@ -193,7 +192,7 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
                 st.session_state["pagina"] = "login"
                 st.rerun()
 
-# =============== CONEXÃO BANCO (nova tela) ========================
+# ======== CONFIGURAÇÃO DA CONEXÃO BANCO =======
 elif st.session_state.get("pagina") == "conexao":
     st.title("⚙️ Configuração da conexão com o banco")
     usuario = st.session_state["usuario"]
@@ -214,6 +213,7 @@ elif st.session_state.get("pagina") == "conexao":
                     (host, porta, usuario_banco, senha_banco, schema, intervalo_sync, usuario["id"])
                 )
                 conn.commit()
+            # Atualiza usuário e session_state para sincronização!
             st.session_state["usuario"].update({
                 "host": host,
                 "porta": porta,
@@ -228,6 +228,7 @@ elif st.session_state.get("pagina") == "conexao":
             st.session_state["mysql_password"] = senha_banco
             st.session_state["mysql_database"] = schema
             st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
+            st.session_state["sincronizar_pendente"] = True
             st.success("Conexão salva com sucesso!")
             st.session_state["pagina"] = "dashboard"
             st.rerun()
@@ -255,38 +256,23 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         sqlite_path = f"data/cliente_{id_usuario}.db"
         intervalo_sync = usuario.get("intervalo_sync", 60)
         ultimo_sync_str = usuario.get("ultimo_sync")
-        precisa_sync = False
 
-        # Checa sincronização automática
-        if not ultimo_sync_str:
-            precisa_sync = True
-        else:
-            try:
-                dt_ultimo = datetime.fromisoformat(ultimo_sync_str)
-                if datetime.now() > dt_ultimo + timedelta(minutes=int(intervalo_sync)):
-                    precisa_sync = True
-            except Exception:
-                precisa_sync = True
-
-        # Executa sincronização se necessário
-        if precisa_sync:
+        # Só sincroniza se a flag estiver marcada!
+        if st.session_state.get("sincronizar_pendente", False):
             with st.spinner("Sincronizando dados do banco..."):
                 sync_mysql_to_sqlite()
                 novo_sync = datetime.now().isoformat()
                 atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
                 st.session_state["usuario"]["ultimo_sync"] = novo_sync
                 st.success("Dados atualizados automaticamente!")
-        else:
+            st.session_state["sincronizar_pendente"] = False
+        elif ultimo_sync_str:
             st.info(f"Última sincronização: {ultimo_sync_str}")
 
-        # Botão manual
+        # Botão manual marca a flag!
         if st.button("🔄 Sincronizar agora"):
-            with st.spinner("Sincronizando dados do banco..."):
-                sync_mysql_to_sqlite()
-                novo_sync = datetime.now().isoformat()
-                atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
-                st.session_state["usuario"]["ultimo_sync"] = novo_sync
-                st.success("Dados atualizados manualmente!")
+            st.session_state["sincronizar_pendente"] = True
+            st.rerun()
 
         # Diagnóstico: tabelas no SQLite
         try:
@@ -311,9 +297,9 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         else:
             carregar_indicadores(sqlite_path, data_inicio, data_fim)
 
-        # Entrada IA
+        # Entrada IA — agora como formulário, ENTER funciona!
         with st.form("pergunta_form"):
             pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
             submitted = st.form_submit_button("🧠 Consultar IA")
-            if submitted:
+            if submitted and pergunta.strip():
                 executar_pergunta(pergunta, sqlite_path)
