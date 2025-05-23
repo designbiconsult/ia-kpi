@@ -9,26 +9,26 @@ from sync.sync_db import sync_mysql_to_sqlite
 
 DB_PATH = "data/database.db"
 os.makedirs("data", exist_ok=True)
-conn = sqlite3.connect(DB_PATH)
-c = conn.cursor()
 
 # Criação/upgrade da tabela de usuários com campos de sincronização
-c.execute('''
-    CREATE TABLE IF NOT EXISTS usuarios (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome TEXT NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        senha TEXT NOT NULL,
-        host TEXT,
-        porta TEXT,
-        usuario_banco TEXT,
-        senha_banco TEXT,
-        schema TEXT,
-        intervalo_sync INTEGER DEFAULT 60,
-        ultimo_sync TEXT
-    )
-''')
-conn.commit()
+with sqlite3.connect(DB_PATH, timeout=10) as conn:
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            senha TEXT NOT NULL,
+            host TEXT,
+            porta TEXT,
+            usuario_banco TEXT,
+            senha_banco TEXT,
+            schema TEXT,
+            intervalo_sync INTEGER DEFAULT 60,
+            ultimo_sync TEXT
+        )
+    ''')
+    conn.commit()
 
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
@@ -38,28 +38,71 @@ if "pagina" not in st.session_state:
     st.session_state["pagina"] = "login"
 
 def autenticar(email, senha):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT * FROM usuarios WHERE email = ? AND senha = ?", (email, senha))
-    resultado = c.fetchone()
-    conn.close()
-    return resultado
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+        c = conn.cursor()
+        c.execute("SELECT * FROM usuarios WHERE email = ? AND senha = ?", (email, senha))
+        resultado = c.fetchone()
+        return resultado
 
 def atualizar_usuario_campo(id_usuario, campo, valor):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(f"UPDATE usuarios SET {campo} = ? WHERE id = ?", (valor, id_usuario))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+        c = conn.cursor()
+        c.execute(f"UPDATE usuarios SET {campo} = ? WHERE id = ?", (valor, id_usuario))
+        conn.commit()
 
 def carregar_indicadores(sqlite_path):
     try:
-        conn = sqlite3.connect(sqlite_path)
-        # ... [seus indicadores] ...
-        conn.close()
-        st.write("Indicadores aqui")
+        with sqlite3.connect(sqlite_path, timeout=10) as conn:
+            # Aqui vão os indicadores de produção (ajuste conforme necessidade)
+            total_produtos = pd.read_sql("SELECT COUNT(*) as total FROM VW_CTO_PRODUTO", conn)["total"][0]
+
+            qtd_mes = pd.read_sql("""
+                SELECT SUM(QTD_MOVIMENTACAO) as total
+                FROM VW_CTO_ORDEM_PRODUCAO_ITEM
+                WHERE TIPO_MOVIMENTACAO = 'Produzida'
+                  AND strftime('%Y-%m', DATA_MOVIMENTACAO) = strftime('%Y-%m', 'now')
+            """, conn)["total"][0] or 0
+
+            produto_top = pd.read_sql("""
+                SELECT ITEM.CODIGO_INTERNO_PRODUTO, PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
+                FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
+                LEFT JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
+                WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
+                  AND ITEM.DATA_MOVIMENTACAO >= date('now', '-3 months')
+                GROUP BY ITEM.CODIGO_INTERNO_PRODUTO
+                ORDER BY total DESC
+                LIMIT 1
+            """, conn)
+
+            nome_produto = produto_top["DESCRICAO_PRODUTO"][0] if not produto_top.empty else "Nenhum"
+            qtd_produto = produto_top["total"][0] if not produto_top.empty else 0
+
+            grafico_df = pd.read_sql("""
+                SELECT strftime('%Y-%m', DATA_MOVIMENTACAO) as mes, SUM(QTD_MOVIMENTACAO) as total
+                FROM VW_CTO_ORDEM_PRODUCAO_ITEM
+                WHERE TIPO_MOVIMENTACAO = 'Produzida'
+                  AND DATA_MOVIMENTACAO >= date('now', '-6 months')
+                GROUP BY mes
+                ORDER BY mes
+            """, conn)
+
+        st.subheader("📊 Indicadores básicos")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Produtos cadastrados", total_produtos)
+        col2.metric("Produzido neste mês", int(qtd_mes))
+        col3.metric("Mais produzido (3 meses)", f"{nome_produto} ({int(qtd_produto)})")
+
+        st.subheader("📈 Produção - últimos 6 meses")
+        fig, ax = plt.subplots()
+        ax.bar(grafico_df["mes"], grafico_df["total"])
+        ax.set_ylabel("Qtd Produzida")
+        ax.set_xlabel("Mês")
+        ax.set_title("Produção Mensal")
+        st.pyplot(fig)
+
     except Exception as e:
         st.error(f"❌ Erro ao carregar indicadores: {e}")
+        st.exception(e)
 
 # ====================== LOGIN ==============================
 if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
@@ -107,11 +150,13 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
                 st.error("Preencha todos os campos.")
             else:
                 try:
-                    c.execute(
-                        "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
-                        (nome, email, senha)
-                    )
-                    conn.commit()
+                    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                        c = conn.cursor()
+                        c.execute(
+                            "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
+                            (nome, email, senha)
+                        )
+                        conn.commit()
                     st.success("Cadastro realizado com sucesso! Faça login para continuar.")
                     st.session_state["pagina"] = "login"
                     st.rerun()
@@ -136,14 +181,13 @@ elif st.session_state["logado"] and st.session_state["pagina"] == "dashboard":
 
             if submitted:
                 try:
-                    conn = sqlite3.connect(DB_PATH)
-                    c = conn.cursor()
-                    c.execute(
-                        "UPDATE usuarios SET host = ?, porta = ?, usuario_banco = ?, senha_banco = ?, schema = ?, intervalo_sync = ? WHERE id = ?",
-                        (host, porta, usuario_banco, senha_banco, schema, intervalo_sync, st.session_state["usuario"]["id"])
-                    )
-                    conn.commit()
-                    conn.close()
+                    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                        c = conn.cursor()
+                        c.execute(
+                            "UPDATE usuarios SET host = ?, porta = ?, usuario_banco = ?, senha_banco = ?, schema = ?, intervalo_sync = ? WHERE id = ?",
+                            (host, porta, usuario_banco, senha_banco, schema, intervalo_sync, st.session_state["usuario"]["id"])
+                        )
+                        conn.commit()
                     st.session_state["usuario"].update({
                         "host": host,
                         "porta": porta,
@@ -197,15 +241,14 @@ elif st.session_state["logado"] and st.session_state["pagina"] == "dashboard":
 
         # Diagnóstico: tabelas no SQLite
         try:
-            conn_debug = sqlite3.connect(sqlite_path)
-            tabelas = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", conn_debug)
-            st.sidebar.subheader("📚 Tabelas no banco local:")
-            st.sidebar.write(tabelas)
-            conn_debug.close()
-            if os.path.exists(sqlite_path):
-                st.sidebar.success("📁 Banco sincronizado com sucesso!")
-            else:
-                st.sidebar.error("❌ Banco local SQLite não encontrado.")
+            with sqlite3.connect(sqlite_path, timeout=10) as conn_debug:
+                tabelas = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", conn_debug)
+                st.sidebar.subheader("📚 Tabelas no banco local:")
+                st.sidebar.write(tabelas)
+                if os.path.exists(sqlite_path):
+                    st.sidebar.success("📁 Banco sincronizado com sucesso!")
+                else:
+                    st.sidebar.error("❌ Banco local SQLite não encontrado.")
         except Exception as e:
             st.sidebar.error(f"Erro ao acessar banco local: {e}")
 
