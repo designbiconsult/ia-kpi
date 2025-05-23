@@ -166,6 +166,26 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
 # === Dashboard
 elif st.session_state["logado"] and st.session_state["pagina"] == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
+    # Apenas sincroniza se os dados de conexão estiverem preenchidos
+if all([
+    st.session_state['usuario']["host"],
+    st.session_state['usuario']["porta"],
+    st.session_state['usuario']["usuario_banco"],
+    st.session_state['usuario']["senha_banco"],
+    st.session_state['usuario']["schema"]
+]):
+    st.session_state["mysql_host"] = st.session_state["usuario"]["host"]
+    st.session_state["mysql_port"] = st.session_state["usuario"]["porta"]
+    st.session_state["mysql_user"] = st.session_state["usuario"]["usuario_banco"]
+    st.session_state["mysql_password"] = st.session_state["usuario"]["senha_banco"]
+    st.session_state["mysql_database"] = st.session_state["usuario"]["schema"]
+    st.session_state["sqlite_path"] = f"data/cliente_{st.session_state['usuario']['id']}.db"
+
+    if not os.path.exists(st.session_state["sqlite_path"]):
+        with st.spinner("🔄 Sincronizando dados do banco..."):
+            from sync.sync_db import sync_mysql_to_sqlite
+            sync_mysql_to_sqlite()
+            st.success("✅ Dados sincronizados com sucesso.")
 
     if not st.session_state['usuario']["host"]:
         st.warning("Configure a conexão com o banco de dados para continuar.")
