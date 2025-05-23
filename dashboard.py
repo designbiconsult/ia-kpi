@@ -9,26 +9,26 @@ from sync.sync_db import sync_mysql_to_sqlite
 
 DB_PATH = "data/database.db"
 os.makedirs("data", exist_ok=True)
+conn = sqlite3.connect(DB_PATH, timeout=10)
+c = conn.cursor()
 
-# Criação/upgrade da tabela de usuários com campos de sincronização
-with sqlite3.connect(DB_PATH, timeout=10) as conn:
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            senha TEXT NOT NULL,
-            host TEXT,
-            porta TEXT,
-            usuario_banco TEXT,
-            senha_banco TEXT,
-            schema TEXT,
-            intervalo_sync INTEGER DEFAULT 60,
-            ultimo_sync TEXT
-        )
-    ''')
-    conn.commit()
+# Criação da tabela de usuários (com campos extras para sincronização e conexão)
+c.execute('''
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        senha TEXT NOT NULL,
+        host TEXT,
+        porta TEXT,
+        usuario_banco TEXT,
+        senha_banco TEXT,
+        schema TEXT,
+        intervalo_sync INTEGER DEFAULT 60,
+        ultimo_sync TEXT
+    )
+''')
+conn.commit()
 
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
@@ -42,7 +42,7 @@ def autenticar(email, senha):
         c = conn.cursor()
         c.execute("SELECT * FROM usuarios WHERE email = ? AND senha = ?", (email, senha))
         resultado = c.fetchone()
-        return resultado
+    return resultado
 
 def atualizar_usuario_campo(id_usuario, campo, valor):
     with sqlite3.connect(DB_PATH, timeout=10) as conn:
@@ -50,49 +50,57 @@ def atualizar_usuario_campo(id_usuario, campo, valor):
         c.execute(f"UPDATE usuarios SET {campo} = ? WHERE id = ?", (valor, id_usuario))
         conn.commit()
 
-def carregar_indicadores(sqlite_path):
+def carregar_indicadores(sqlite_path, data_inicio, data_fim):
     try:
         with sqlite3.connect(sqlite_path, timeout=10) as conn:
-            # Aqui vão os indicadores de produção (ajuste conforme necessidade)
-            total_produtos = pd.read_sql("SELECT COUNT(*) as total FROM VW_CTO_PRODUTO", conn)["total"][0]
+            # 1. Modelos distintos produzidos no período (referência)
+            total_modelos = pd.read_sql(f"""
+                SELECT COUNT(DISTINCT PROD.REFERENCIA_PRODUTO) AS total
+                FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
+                JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
+                WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
+                  AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+            """, conn)["total"][0] or 0
 
-            qtd_mes = pd.read_sql("""
+            # 2. Quantidade total produzida no período
+            qtd_produzida = pd.read_sql(f"""
                 SELECT SUM(QTD_MOVIMENTACAO) as total
                 FROM VW_CTO_ORDEM_PRODUCAO_ITEM
                 WHERE TIPO_MOVIMENTACAO = 'Produzida'
-                  AND strftime('%Y-%m', DATA_MOVIMENTACAO) = strftime('%Y-%m', 'now')
+                  AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
             """, conn)["total"][0] or 0
 
-            produto_top = pd.read_sql("""
-                SELECT ITEM.CODIGO_INTERNO_PRODUTO, PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
+            # 3. Produto mais produzido no período
+            produto_top = pd.read_sql(f"""
+                SELECT PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
                 FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
-                LEFT JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
+                JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
                 WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
-                  AND ITEM.DATA_MOVIMENTACAO >= date('now', '-3 months')
-                GROUP BY ITEM.CODIGO_INTERNO_PRODUTO
+                  AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+                GROUP BY PROD.DESCRICAO_PRODUTO
                 ORDER BY total DESC
                 LIMIT 1
             """, conn)
-
             nome_produto = produto_top["DESCRICAO_PRODUTO"][0] if not produto_top.empty else "Nenhum"
             qtd_produto = produto_top["total"][0] if not produto_top.empty else 0
 
-            grafico_df = pd.read_sql("""
+            # 4. Gráfico de produção por mês (últimos 6 meses ou período)
+            grafico_df = pd.read_sql(f"""
                 SELECT strftime('%Y-%m', DATA_MOVIMENTACAO) as mes, SUM(QTD_MOVIMENTACAO) as total
                 FROM VW_CTO_ORDEM_PRODUCAO_ITEM
                 WHERE TIPO_MOVIMENTACAO = 'Produzida'
-                  AND DATA_MOVIMENTACAO >= date('now', '-6 months')
+                  AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
                 GROUP BY mes
                 ORDER BY mes
             """, conn)
 
-        st.subheader("📊 Indicadores básicos")
+        st.subheader("📊 Indicadores de Produção")
         col1, col2, col3 = st.columns(3)
-        col1.metric("Produtos cadastrados", total_produtos)
-        col2.metric("Produzido neste mês", int(qtd_mes))
-        col3.metric("Mais produzido (3 meses)", f"{nome_produto} ({int(qtd_produto)})")
+        col1.metric("Modelos produzidos", total_modelos)
+        col2.metric("Total produzido", int(qtd_produzida))
+        col3.metric("Mais produzido", f"{nome_produto} ({int(qtd_produto)})")
 
-        st.subheader("📈 Produção - últimos 6 meses")
+        st.subheader("📈 Produção por mês no período")
         fig, ax = plt.subplots()
         ax.bar(grafico_df["mes"], grafico_df["total"])
         ax.set_ylabel("Qtd Produzida")
@@ -103,6 +111,18 @@ def carregar_indicadores(sqlite_path):
     except Exception as e:
         st.error(f"❌ Erro ao carregar indicadores: {e}")
         st.exception(e)
+
+# =================== SIDEBAR UNIVERSAL =====================
+if st.session_state.get("logado"):
+    with st.sidebar:
+        st.markdown("---")
+        if st.button("⚙️ Configurar conexão"):
+            st.session_state["pagina"] = "conexao"
+            st.rerun()
+        if st.button("Sair"):
+            st.session_state["logado"] = False
+            st.session_state["pagina"] = "login"
+            st.rerun()
 
 # ====================== LOGIN ==============================
 if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
@@ -150,65 +170,68 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
                 st.error("Preencha todos os campos.")
             else:
                 try:
-                    with sqlite3.connect(DB_PATH, timeout=10) as conn:
-                        c = conn.cursor()
-                        c.execute(
-                            "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
-                            (nome, email, senha)
-                        )
-                        conn.commit()
+                    c.execute(
+                        "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
+                        (nome, email, senha)
+                    )
+                    conn.commit()
                     st.success("Cadastro realizado com sucesso! Faça login para continuar.")
                     st.session_state["pagina"] = "login"
                     st.rerun()
                 except sqlite3.IntegrityError:
                     st.error("Este email já está cadastrado.")
 
-# =============== DASHBOARD ========================
-elif st.session_state["logado"] and st.session_state["pagina"] == "dashboard":
+# =============== CONEXÃO BANCO (nova tela) ========================
+elif st.session_state.get("pagina") == "conexao":
+    st.title("⚙️ Configuração da conexão com o banco")
+    usuario = st.session_state["usuario"]
+    with st.form("form_conexao_edit"):
+        host = st.text_input("Host do banco", value=usuario.get("host") or "")
+        porta = st.text_input("Porta", value=usuario.get("porta") or "3306")
+        usuario_banco = st.text_input("Usuário do banco", value=usuario.get("usuario_banco") or "")
+        senha_banco = st.text_input("Senha do banco", value=usuario.get("senha_banco") or "", type="password")
+        schema = st.text_input("Schema", value=usuario.get("schema") or "")
+        intervalo_sync = st.selectbox("Intervalo de sincronização (min):", [5,10,15,30,60,120,240,1440], index=4)
+        submitted = st.form_submit_button("Salvar conexão")
+
+        if submitted:
+            with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                c = conn.cursor()
+                c.execute(
+                    "UPDATE usuarios SET host = ?, porta = ?, usuario_banco = ?, senha_banco = ?, schema = ?, intervalo_sync = ? WHERE id = ?",
+                    (host, porta, usuario_banco, senha_banco, schema, intervalo_sync, usuario["id"])
+                )
+                conn.commit()
+            st.session_state["usuario"].update({
+                "host": host,
+                "porta": porta,
+                "usuario_banco": usuario_banco,
+                "senha_banco": senha_banco,
+                "schema": schema,
+                "intervalo_sync": intervalo_sync
+            })
+            st.success("Conexão salva com sucesso!")
+            st.session_state["pagina"] = "dashboard"
+            st.rerun()
+
+    if st.button("⬅️ Voltar para Dashboard"):
+        st.session_state["pagina"] = "dashboard"
+        st.rerun()
+
+# =============== DASHBOARD (indicadores e IA) ===================
+elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
 
-    # Configuração dos dados de conexão ao banco
     if not st.session_state['usuario']["host"]:
-        st.warning("Configure a conexão com o banco de dados para continuar.")
-        with st.form("conexao_form"):
-            host = st.text_input("Host do banco")
-            porta = st.text_input("Porta", value="3306")
-            usuario_banco = st.text_input("Usuário do banco")
-            senha_banco = st.text_input("Senha do banco", type="password")
-            schema = st.text_input("Schema (ex: dbview)")
-            intervalo_sync = st.selectbox("Intervalo de sincronização (min):", [5,10,15,30,60,120,240,1440], index=4)
-            submitted = st.form_submit_button("Salvar conexão")
-
-            if submitted:
-                try:
-                    with sqlite3.connect(DB_PATH, timeout=10) as conn:
-                        c = conn.cursor()
-                        c.execute(
-                            "UPDATE usuarios SET host = ?, porta = ?, usuario_banco = ?, senha_banco = ?, schema = ?, intervalo_sync = ? WHERE id = ?",
-                            (host, porta, usuario_banco, senha_banco, schema, intervalo_sync, st.session_state["usuario"]["id"])
-                        )
-                        conn.commit()
-                    st.session_state["usuario"].update({
-                        "host": host,
-                        "porta": porta,
-                        "usuario_banco": usuario_banco,
-                        "senha_banco": senha_banco,
-                        "schema": schema,
-                        "intervalo_sync": intervalo_sync
-                    })
-                    st.success("Conexão salva com sucesso!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao salvar conexão: {e}")
+        st.warning("Configure a conexão com o banco de dados para continuar. (Menu lateral)")
     else:
-        # === Controle de sincronização automática ===
         id_usuario = st.session_state["usuario"]["id"]
         sqlite_path = f"data/cliente_{id_usuario}.db"
         intervalo_sync = st.session_state["usuario"].get("intervalo_sync", 60)
         ultimo_sync_str = st.session_state["usuario"].get("ultimo_sync")
         precisa_sync = False
 
-        # Checa se precisa sincronizar
+        # Checa sincronização automática
         if not ultimo_sync_str:
             precisa_sync = True
         else:
@@ -223,12 +246,11 @@ elif st.session_state["logado"] and st.session_state["pagina"] == "dashboard":
         if precisa_sync:
             with st.spinner("Sincronizando dados do banco..."):
                 sync_mysql_to_sqlite()
-                import time; time.sleep(1)  # Garante 1 segundo para a conexão fechar (ajuda no Cloud)
-
                 novo_sync = datetime.now().isoformat()
                 atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
                 st.session_state["usuario"]["ultimo_sync"] = novo_sync
                 st.success("Dados atualizados automaticamente!")
+
         else:
             st.info(f"Última sincronização: {ultimo_sync_str}")
 
@@ -243,7 +265,7 @@ elif st.session_state["logado"] and st.session_state["pagina"] == "dashboard":
 
         # Diagnóstico: tabelas no SQLite
         try:
-            with sqlite3.connect(sqlite_path, timeout=10) as conn_debug:
+            with sqlite3.connect(sqlite_path) as conn_debug:
                 tabelas = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", conn_debug)
                 st.sidebar.subheader("📚 Tabelas no banco local:")
                 st.sidebar.write(tabelas)
@@ -254,16 +276,18 @@ elif st.session_state["logado"] and st.session_state["pagina"] == "dashboard":
         except Exception as e:
             st.sidebar.error(f"Erro ao acessar banco local: {e}")
 
-        # Indicadores
-        carregar_indicadores(sqlite_path)
+        # Filtro de datas para indicadores
+        st.subheader("Selecione o período para indicadores de produção")
+        hoje = datetime.now().date()
+        data_inicio = st.date_input("Data início", value=hoje.replace(day=1))
+        data_fim = st.date_input("Data fim", value=hoje)
+        if data_fim < data_inicio:
+            st.error("Data final deve ser igual ou posterior à data inicial.")
+        else:
+            carregar_indicadores(sqlite_path, data_inicio, data_fim)
 
-        # Pergunta para IA
+        # Entrada IA
         st.subheader("Faça sua pergunta à IA")
         pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?")
         if st.button("🧠 Consultar IA"):
             executar_pergunta(pergunta, sqlite_path)
-
-        if st.sidebar.button("Sair"):
-            st.session_state["logado"] = False
-            st.session_state["pagina"] = "login"
-            st.rerun()
