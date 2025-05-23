@@ -25,29 +25,25 @@ def sync_mysql_to_sqlite():
     inspector = inspect(mysql_engine)
 
     os.makedirs(os.path.dirname(output_sqlite_path), exist_ok=True)
-    sqlite_conn = sqlite3.connect(output_sqlite_path)
+    # Use 'with' para garantir fechamento correto
+    with sqlite3.connect(output_sqlite_path, timeout=30) as sqlite_conn:
+        try:
+            views = inspector.get_view_names(schema=mysql_database)
+            tables = inspector.get_table_names(schema=mysql_database)
+            entidades = views + tables
 
-    try:
-        views = inspector.get_view_names(schema=mysql_database)
-        tables = inspector.get_table_names(schema=mysql_database)
-        entidades = views + tables
+            for entidade in entidades:
+                st.write(f"🔄 Sincronizando: {entidade}")
+                df = pd.read_sql(f"SELECT * FROM `{mysql_database}`.`{entidade}`", mysql_engine)
+                df.to_sql(entidade, con=sqlite_conn, if_exists="replace", index=False)
 
-        for entidade in entidades:
-            st.write(f"🔄 Sincronizando: {entidade}")
-            df = pd.read_sql(f"SELECT * FROM `{mysql_database}`.`{entidade}`", mysql_engine)
-            df.to_sql(entidade, con=sqlite_conn, if_exists="replace", index=False)
+            salvar_estrutura_dinamica(entidades, sqlite_conn)
+            st.success("✅ Sincronização concluída com sucesso.")
 
-        salvar_estrutura_dinamica(entidades, sqlite_conn)
-
-        st.success("✅ Sincronização concluída com sucesso.")
-
-    except Exception as e:
-        st.error(f"❌ Erro ao sincronizar: {e}")
-
-    finally:
-        sqlite_conn.close()
-        mysql_engine.dispose()
-
+        except Exception as e:
+            st.error(f"❌ Erro ao sincronizar: {e}")
+        finally:
+            mysql_engine.dispose()
 
 def salvar_estrutura_dinamica(tabelas, conn_sqlite):
     """
@@ -81,3 +77,4 @@ def salvar_estrutura_dinamica(tabelas, conn_sqlite):
             print(f"Erro ao processar tabela {tabela}: {e}")
 
     conn_sqlite.commit()
+    cursor.close()

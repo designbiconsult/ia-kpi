@@ -223,6 +223,8 @@ elif st.session_state["logado"] and st.session_state["pagina"] == "dashboard":
         if precisa_sync:
             with st.spinner("Sincronizando dados do banco..."):
                 sync_mysql_to_sqlite()
+                import time; time.sleep(1)  # Garante 1 segundo para a conexão fechar (ajuda no Cloud)
+
                 novo_sync = datetime.now().isoformat()
                 atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
                 st.session_state["usuario"]["ultimo_sync"] = novo_sync
