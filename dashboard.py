@@ -245,10 +245,11 @@ elif st.session_state["logado"] and st.session_state["pagina"] == "dashboard":
             st.sidebar.error(f"Erro ao acessar banco local: {e}")
 
         # Entrada da IA
-        st.subheader("Faça sua pergunta à IA")
-        pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?")
-        if st.button("🧠 Consultar IA"):
-            executar_pergunta(pergunta, st.session_state["sqlite_path"])
+with st.form("form_ia"):
+    pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?")
+    submit = st.form_submit_button("🧠 Consultar IA")
+    if submit:
+        executar_pergunta(pergunta, st.session_state["sqlite_path"])
 
         if st.sidebar.button("Sair"):
             st.session_state["logado"] = False
