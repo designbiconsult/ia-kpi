@@ -10,9 +10,7 @@ from sync.sync_db import sync_mysql_to_sqlite
 DB_PATH = "data/database.db"
 os.makedirs("data", exist_ok=True)
 
-st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
-
-# Criação da tabela de usuários
+# Criação e atualização do schema de usuários
 with sqlite3.connect(DB_PATH, timeout=10) as conn:
     c = conn.cursor()
     c.execute('''
@@ -25,21 +23,21 @@ with sqlite3.connect(DB_PATH, timeout=10) as conn:
             porta TEXT,
             usuario_banco TEXT,
             senha_banco TEXT,
-            schema TEXT,
-            intervalo_sync INTEGER DEFAULT 60,
-            ultimo_sync TEXT
+            schema TEXT
         )
     ''')
-try:
+    # Garante os campos extras mesmo se o banco já existir
+    try:
         c.execute("ALTER TABLE usuarios ADD COLUMN intervalo_sync INTEGER DEFAULT 60")
-except sqlite3.OperationalError:
-    pass
-try:
-    c.execute("ALTER TABLE usuarios ADD COLUMN ultimo_sync TEXT")
-except sqlite3.OperationalError:
-    pass
-conn.commit()
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE usuarios ADD COLUMN ultimo_sync TEXT")
+    except sqlite3.OperationalError:
+        pass
+    conn.commit()
 
+st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
@@ -121,7 +119,7 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
         st.error(f"❌ Erro ao carregar indicadores: {e}")
         st.exception(e)
 
-# ======== SIDEBAR UNIVERSAL =======
+# =================== SIDEBAR UNIVERSAL =====================
 if st.session_state.get("logado"):
     with st.sidebar:
         st.markdown("---")
@@ -133,7 +131,7 @@ if st.session_state.get("logado"):
             st.session_state["pagina"] = "login"
             st.rerun()
 
-# ======== LOGIN =======
+# ====================== LOGIN ==============================
 if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
     st.title("🔐 Login IA KPI")
     email = st.text_input("Email")
@@ -154,7 +152,6 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
                 "intervalo_sync": usuario[9] or 60,
                 "ultimo_sync": usuario[10]
             }
-            # Sempre atualize variáveis de sessão para sync
             st.session_state["mysql_host"] = usuario[4]
             st.session_state["mysql_port"] = usuario[5]
             st.session_state["mysql_user"] = usuario[6]
@@ -172,7 +169,7 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
         st.session_state["pagina"] = "cadastro"
         st.rerun()
 
-# ======== CADASTRO =======
+# =================== CADASTRO ==============================
 elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]:
     st.title("📊 Cadastro de Cliente IA KPI")
     with st.form("cadastro_form"):
@@ -196,7 +193,7 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
                 st.session_state["pagina"] = "login"
                 st.rerun()
 
-# ======== CONFIGURAÇÃO DA CONEXÃO BANCO =======
+# =============== CONEXÃO BANCO (nova tela) ========================
 elif st.session_state.get("pagina") == "conexao":
     st.title("⚙️ Configuração da conexão com o banco")
     usuario = st.session_state["usuario"]
@@ -217,7 +214,6 @@ elif st.session_state.get("pagina") == "conexao":
                     (host, porta, usuario_banco, senha_banco, schema, intervalo_sync, usuario["id"])
                 )
                 conn.commit()
-            # Atualiza usuário e session_state para sincronização!
             st.session_state["usuario"].update({
                 "host": host,
                 "porta": porta,
@@ -245,13 +241,12 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
     # Atualiza variáveis de conexão na sessão SEMPRE
-    if usuario["host"] and usuario["porta"] and usuario["usuario_banco"]:
-        st.session_state["mysql_host"] = usuario["host"]
-        st.session_state["mysql_port"] = usuario["porta"]
-        st.session_state["mysql_user"] = usuario["usuario_banco"]
-        st.session_state["mysql_password"] = usuario["senha_banco"]
-        st.session_state["mysql_database"] = usuario["schema"]
-        st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
+    st.session_state["mysql_host"] = usuario["host"]
+    st.session_state["mysql_port"] = usuario["porta"]
+    st.session_state["mysql_user"] = usuario["usuario_banco"]
+    st.session_state["mysql_password"] = usuario["senha_banco"]
+    st.session_state["mysql_database"] = usuario["schema"]
+    st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
 
     if not usuario["host"]:
         st.warning("Configure a conexão com o banco de dados para continuar. (Menu lateral)")
