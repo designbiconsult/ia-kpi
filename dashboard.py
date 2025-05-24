@@ -12,7 +12,6 @@ os.makedirs("data", exist_ok=True)
 
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
-# Criação da tabela de usuários
 with sqlite3.connect(DB_PATH, timeout=10) as conn:
     c = conn.cursor()
     c.execute('''
@@ -32,7 +31,6 @@ with sqlite3.connect(DB_PATH, timeout=10) as conn:
     ''')
     conn.commit()
 
-# Controle de sessão
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
 if "pagina" not in st.session_state:
@@ -110,7 +108,7 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
     except Exception as e:
         st.error(f"❌ Erro ao carregar indicadores: {e}")
 
-# SIDEBAR UNIVERSAL
+# =============== SIDEBAR UNIVERSAL ===============
 if st.session_state.get("logado"):
     with st.sidebar:
         st.markdown("---")
@@ -123,7 +121,7 @@ if st.session_state.get("logado"):
             st.session_state["ja_sincronizou"] = False
             st.rerun()
 
-# LOGIN
+# =============== LOGIN ===============
 if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
     st.title("🔐 Login IA KPI")
     email = st.text_input("Email")
@@ -162,7 +160,7 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
         st.session_state["pagina"] = "cadastro"
         st.rerun()
 
-# CADASTRO
+# =============== CADASTRO ===============
 elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]:
     st.title("📊 Cadastro de Cliente IA KPI")
     with st.form("cadastro_form"):
@@ -186,7 +184,7 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
                 st.session_state["pagina"] = "login"
                 st.rerun()
 
-# CONFIGURAÇÃO DA CONEXÃO BANCO
+# =============== CONEXÃO BANCO ===============
 elif st.session_state.get("pagina") == "conexao":
     st.title("⚙️ Configuração da conexão com o banco")
     usuario = st.session_state["usuario"]
@@ -230,7 +228,7 @@ elif st.session_state.get("pagina") == "conexao":
         st.session_state["pagina"] = "dashboard"
         st.rerun()
 
-# DASHBOARD PRINCIPAL
+# =============== DASHBOARD PRINCIPAL ===============
 elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
@@ -241,7 +239,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
 
-    # Só executa sincronismo automático uma vez após login/cadastro/conexão
+    # Sincronismo só na primeira entrada do dashboard
     if not usuario["host"]:
         st.warning("Configure a conexão com o banco de dados para continuar. (Menu lateral)")
     else:
@@ -251,7 +249,6 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         ultimo_sync_str = usuario.get("ultimo_sync")
         precisa_sync = False
 
-        # Controle de sincronização
         if not st.session_state.get("ja_sincronizou", False):
             if not ultimo_sync_str:
                 precisa_sync = True
@@ -272,9 +269,9 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                     st.success("Dados atualizados automaticamente!")
             else:
                 st.info(f"Última sincronização: {ultimo_sync_str}")
-            st.session_state["ja_sincronizou"] = True  # Garante que não vai sincronizar de novo nesta sessão
+            st.session_state["ja_sincronizou"] = True
 
-        # Botão manual (este pode ser clicado quantas vezes quiser!)
+        # Botão manual de sincronismo
         if st.button("🔄 Sincronizar agora"):
             with st.spinner("Sincronizando dados do banco..."):
                 sync_mysql_to_sqlite()
@@ -310,6 +307,5 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         with st.form("pergunta_form"):
             pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
             submitted = st.form_submit_button("🧠 Consultar IA")
-            if submitted:
+            if submitted and pergunta.strip():
                 executar_pergunta(pergunta, sqlite_path)
-
