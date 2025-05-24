@@ -5,13 +5,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 from app.query_handler import executar_pergunta
+from sync.sync_db import sync_mysql_to_sqlite
 
 DB_PATH = "data/database.db"
 os.makedirs("data", exist_ok=True)
 
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
-# Criação da tabela de usuários (atualizada para incluir novos campos)
+# Criação da tabela de usuários (com campos extras para sincronização e conexão)
 with sqlite3.connect(DB_PATH, timeout=10) as conn:
     c = conn.cursor()
     c.execute('''
@@ -52,7 +53,6 @@ def atualizar_usuario_campo(id_usuario, campo, valor):
 def carregar_indicadores(sqlite_path, data_inicio, data_fim):
     try:
         with sqlite3.connect(sqlite_path, timeout=10) as conn:
-            # 1. Modelos distintos produzidos no período (referência)
             total_modelos = pd.read_sql(f"""
                 SELECT COUNT(DISTINCT PROD.REFERENCIA_PRODUTO) AS total
                 FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
@@ -61,7 +61,6 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
                   AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
             """, conn)["total"][0] or 0
 
-            # 2. Quantidade total produzida no período
             qtd_produzida = pd.read_sql(f"""
                 SELECT SUM(QTD_MOVIMENTACAO) as total
                 FROM VW_CTO_ORDEM_PRODUCAO_ITEM
@@ -69,7 +68,6 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
                   AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
             """, conn)["total"][0] or 0
 
-            # 3. Produto mais produzido no período
             produto_top = pd.read_sql(f"""
                 SELECT PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
                 FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
@@ -83,7 +81,6 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
             nome_produto = produto_top["DESCRICAO_PRODUTO"][0] if not produto_top.empty else "Nenhum"
             qtd_produto = produto_top["total"][0] if not produto_top.empty else 0
 
-            # 4. Gráfico de produção por mês (últimos 6 meses ou período)
             grafico_df = pd.read_sql(f"""
                 SELECT strftime('%Y-%m', DATA_MOVIMENTACAO) as mes, SUM(QTD_MOVIMENTACAO) as total
                 FROM VW_CTO_ORDEM_PRODUCAO_ITEM
@@ -109,7 +106,6 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
 
     except Exception as e:
         st.error(f"❌ Erro ao carregar indicadores: {e}")
-        st.exception(e)
 
 # ======== SIDEBAR UNIVERSAL =======
 if st.session_state.get("logado"):
@@ -144,7 +140,6 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
                 "intervalo_sync": usuario[9] or 60,
                 "ultimo_sync": usuario[10]
             }
-            # Sempre atualize variáveis de sessão para sync
             st.session_state["mysql_host"] = usuario[4]
             st.session_state["mysql_port"] = usuario[5]
             st.session_state["mysql_user"] = usuario[6]
@@ -207,7 +202,6 @@ elif st.session_state.get("pagina") == "conexao":
                     (host, porta, usuario_banco, senha_banco, schema, intervalo_sync, usuario["id"])
                 )
                 conn.commit()
-            # Atualiza usuário e session_state para sincronização!
             st.session_state["usuario"].update({
                 "host": host,
                 "porta": porta,
@@ -234,7 +228,6 @@ elif st.session_state.get("pagina") == "conexao":
 elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
-    # Atualiza variáveis de conexão na sessão SEMPRE
     st.session_state["mysql_host"] = usuario["host"]
     st.session_state["mysql_port"] = usuario["porta"]
     st.session_state["mysql_user"] = usuario["usuario_banco"]
@@ -264,25 +257,29 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
 
         # Executa sincronização se necessário
         if precisa_sync:
-            from sync.sync_db import sync_mysql_to_sqlite
             with st.spinner("Sincronizando dados do banco..."):
-                sync_mysql_to_sqlite()
+                sucesso, mensagem_erro = sync_mysql_to_sqlite()
                 novo_sync = datetime.now().isoformat()
-                atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
-                st.session_state["usuario"]["ultimo_sync"] = novo_sync
-                st.success("Dados atualizados automaticamente!")
+                if sucesso:
+                    atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
+                    st.session_state["usuario"]["ultimo_sync"] = novo_sync
+                    st.success("Dados atualizados automaticamente!")
+                else:
+                    st.error(f"Erro na sincronização: {mensagem_erro}")
         else:
             st.info(f"Última sincronização: {ultimo_sync_str}")
 
         # Botão manual
         if st.button("🔄 Sincronizar agora"):
-            from sync.sync_db import sync_mysql_to_sqlite
             with st.spinner("Sincronizando dados do banco..."):
-                sync_mysql_to_sqlite()
+                sucesso, mensagem_erro = sync_mysql_to_sqlite()
                 novo_sync = datetime.now().isoformat()
-                atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
-                st.session_state["usuario"]["ultimo_sync"] = novo_sync
-                st.success("Dados atualizados manualmente!")
+                if sucesso:
+                    atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
+                    st.session_state["usuario"]["ultimo_sync"] = novo_sync
+                    st.success("Dados atualizados manualmente!")
+                else:
+                    st.error(f"Erro na sincronização: {mensagem_erro}")
 
         # Diagnóstico: tabelas no SQLite
         try:
