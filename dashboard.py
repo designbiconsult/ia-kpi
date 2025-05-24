@@ -35,8 +35,6 @@ if "logado" not in st.session_state:
     st.session_state["logado"] = False
 if "pagina" not in st.session_state:
     st.session_state["pagina"] = "login"
-if "ja_sincronizou" not in st.session_state:
-    st.session_state["ja_sincronizou"] = False
 
 def autenticar(email, senha):
     with sqlite3.connect(DB_PATH, timeout=10) as conn:
@@ -118,7 +116,6 @@ if st.session_state.get("logado"):
         if st.button("Sair"):
             st.session_state["logado"] = False
             st.session_state["pagina"] = "login"
-            st.session_state["ja_sincronizou"] = False
             st.rerun()
 
 # =============== LOGIN ===============
@@ -249,7 +246,8 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         ultimo_sync_str = usuario.get("ultimo_sync")
         precisa_sync = False
 
-        if not st.session_state.get("ja_sincronizou", False):
+        # Controle: só sincroniza se ainda não sincronizou (evita rodar após submit da IA)
+        if "ja_sincronizou" not in st.session_state or not st.session_state["ja_sincronizou"]:
             if not ultimo_sync_str:
                 precisa_sync = True
             else:
@@ -269,6 +267,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                     st.success("Dados atualizados automaticamente!")
             else:
                 st.info(f"Última sincronização: {ultimo_sync_str}")
+            # Marque como sincronizado após o primeiro acesso
             st.session_state["ja_sincronizou"] = True
 
         # Botão manual de sincronismo
@@ -279,6 +278,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                 atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
                 st.session_state["usuario"]["ultimo_sync"] = novo_sync
                 st.success("Dados atualizados manualmente!")
+            st.session_state["ja_sincronizou"] = True
 
         # Diagnóstico: tabelas no SQLite
         try:
