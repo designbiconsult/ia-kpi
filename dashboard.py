@@ -146,7 +146,6 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
             st.session_state["mysql_database"] = usuario[8]
             st.session_state["sqlite_path"] = f"data/cliente_{usuario[0]}.db"
             st.session_state["pagina"] = "dashboard"
-            st.session_state["ja_sincronizou"] = False
             st.rerun()
         else:
             st.error("Credenciais inválidas.")
@@ -216,7 +215,6 @@ elif st.session_state.get("pagina") == "conexao":
             st.session_state["mysql_password"] = senha_banco
             st.session_state["mysql_database"] = schema
             st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
-            st.session_state["ja_sincronizou"] = False
             st.success("Conexão salva com sucesso!")
             st.session_state["pagina"] = "dashboard"
             st.rerun()
@@ -236,7 +234,6 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
 
-    # Sincronismo só na primeira entrada do dashboard
     if not usuario["host"]:
         st.warning("Configure a conexão com o banco de dados para continuar. (Menu lateral)")
     else:
@@ -246,29 +243,27 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         ultimo_sync_str = usuario.get("ultimo_sync")
         precisa_sync = False
 
-        # Controle: só sincroniza se ainda não sincronizou (evita rodar após submit da IA)
-        if "ja_sincronizou" not in st.session_state or not st.session_state["ja_sincronizou"]:
-            if not ultimo_sync_str:
-                precisa_sync = True
-            else:
-                try:
-                    dt_ultimo = datetime.fromisoformat(ultimo_sync_str)
-                    if datetime.now() > dt_ultimo + timedelta(minutes=int(intervalo_sync)):
-                        precisa_sync = True
-                except Exception:
+        # *** SINCRONISMO SÓ RODA NESTE PONTO ***
+        # Ele NÃO é dependente de session_state, apenas do último sync no banco!
+        if not ultimo_sync_str:
+            precisa_sync = True
+        else:
+            try:
+                dt_ultimo = datetime.fromisoformat(ultimo_sync_str)
+                if datetime.now() > dt_ultimo + timedelta(minutes=int(intervalo_sync)):
                     precisa_sync = True
+            except Exception:
+                precisa_sync = True
 
-            if precisa_sync:
-                with st.spinner("Sincronizando dados do banco..."):
-                    sync_mysql_to_sqlite()
-                    novo_sync = datetime.now().isoformat()
-                    atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
-                    st.session_state["usuario"]["ultimo_sync"] = novo_sync
-                    st.success("Dados atualizados automaticamente!")
-            else:
-                st.info(f"Última sincronização: {ultimo_sync_str}")
-            # Marque como sincronizado após o primeiro acesso
-            st.session_state["ja_sincronizou"] = True
+        if precisa_sync:
+            with st.spinner("Sincronizando dados do banco..."):
+                sync_mysql_to_sqlite()
+                novo_sync = datetime.now().isoformat()
+                atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
+                st.session_state["usuario"]["ultimo_sync"] = novo_sync
+                st.success("Dados atualizados automaticamente!")
+        else:
+            st.info(f"Última sincronização: {ultimo_sync_str}")
 
         # Botão manual de sincronismo
         if st.button("🔄 Sincronizar agora"):
@@ -278,7 +273,6 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                 atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
                 st.session_state["usuario"]["ultimo_sync"] = novo_sync
                 st.success("Dados atualizados manualmente!")
-            st.session_state["ja_sincronizou"] = True
 
         # Diagnóstico: tabelas no SQLite
         try:
