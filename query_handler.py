@@ -1,61 +1,42 @@
 import requests
 import streamlit as st
 
-# Sua chave OpenRouter – Troque para variáveis de ambiente depois!
-import os
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+# Coloque aqui a sua chave da OpenRouter (prefira colocar em segredo/variável ambiente)
+OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "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")
 
-def responder_pergunta_openrouter(pergunta, contexto=""):
-    """
-    Envia a pergunta para a OpenRouter AI e retorna a resposta.
-    contexto pode ser usado para passar informações sobre tabelas, colunas, etc.
-    """
-    url = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+MODEL = "openai/gpt-4-turbo"  # Pode escolher outro do OpenRouter se quiser
+
+def executar_pergunta(pergunta, sqlite_path):
+    st.markdown("#### 🤖 Resposta da IA")
+    if not pergunta.strip():
+        st.info("Digite uma pergunta para a IA.")
+        return
+
+    # Opcional: adicione contexto do banco/localização do usuário, etc.
+
+    # Monte a mensagem do chat:
+    messages = [
+        {"role": "system", "content": "Você é um assistente inteligente para análise de indicadores de gestão empresarial. Seja objetivo e forneça respostas claras com base nos dados disponíveis."},
+        {"role": "user", "content": pergunta},
+    ]
+
+    # Monta requisição ao OpenRouter
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
-    # Monte a mensagem, incluindo contexto se desejar
-    prompt_usuario = pergunta
-    if contexto:
-        prompt_usuario += f"\n\nContexto:\n{contexto}"
-
-    data = {
-        "model": "meta-llama/llama-3-70b-instruct",  # Pode trocar por outro modelo suportado
-        "messages": [
-            {"role": "user", "content": prompt_usuario}
-        ],
-        "max_tokens": 600,
+    body = {
+        "model": MODEL,
+        "messages": messages,
+        "max_tokens": 800,
         "temperature": 0.2
     }
-    resp = requests.post(url, json=data, headers=headers, timeout=60)
-    resp.raise_for_status()
-    resposta = resp.json()['choices'][0]['message']['content']
-    return resposta
-
-def executar_pergunta(pergunta, sqlite_path):
-    """
-    Recebe a pergunta do usuário, gera contexto das tabelas e chama a IA.
-    """
-    # (Opcional) Montar um resumo das tabelas para dar contexto ao LLM
-    contexto = ""
     try:
-        import sqlite3
-        import pandas as pd
-        with sqlite3.connect(sqlite_path, timeout=10) as conn:
-            # Exemplo: listar as tabelas e colunas para o LLM usar como base
-            estrutura = pd.read_sql("SELECT tabela, coluna, descricao FROM estrutura_dinamica LIMIT 30", conn)
-            linhas = []
-            for i, row in estrutura.iterrows():
-                linhas.append(f"Tabela: {row['tabela']} | Coluna: {row['coluna']} | {row['descricao']}")
-            contexto = "\n".join(linhas)
+        response = requests.post(OPENROUTER_API_URL, headers=headers, json=body, timeout=45)
+        response.raise_for_status()
+        resposta = response.json()["choices"][0]["message"]["content"]
+        st.success(resposta)
     except Exception as e:
-        contexto = ""
-
-    with st.spinner("Aguarde! A IA está pensando..."):
-        try:
-            resposta = responder_pergunta_openrouter(pergunta, contexto=contexto)
-            st.success(resposta)
-            # Aqui você pode salvar pergunta/resposta no banco para aprendizado futuro!
-        except Exception as e:
-            st.error(f"Erro ao acessar a OpenRouter: {e}")
+        st.error(f"Erro ao acessar o OpenRouter: {e}")
+        st.exception(e)

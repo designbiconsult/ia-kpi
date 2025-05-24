@@ -12,7 +12,7 @@ os.makedirs("data", exist_ok=True)
 
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
-# Criação da tabela de usuários
+# Criação da tabela de usuários (com campos extras para sincronização e conexão)
 with sqlite3.connect(DB_PATH, timeout=10) as conn:
     c = conn.cursor()
     c.execute('''
@@ -108,6 +108,7 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
 
     except Exception as e:
         st.error(f"❌ Erro ao carregar indicadores: {e}")
+        st.exception(e)
 
 # ======== SIDEBAR UNIVERSAL =======
 if st.session_state.get("logado"):
@@ -115,6 +116,7 @@ if st.session_state.get("logado"):
         st.markdown("---")
         if st.button("⚙️ Configurar conexão"):
             st.session_state["pagina"] = "conexao"
+            st.session_state["sincronizou"] = False  # força nova sync se conexão mudar
             st.rerun()
         if st.button("Sair"):
             st.session_state["logado"] = False
@@ -183,6 +185,7 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
                     conn.commit()
                 st.success("Cadastro realizado com sucesso! Faça login para continuar.")
                 st.session_state["pagina"] = "login"
+                st.session_state["sincronizou"] = False
                 st.rerun()
 
 # ======== CONFIGURAÇÃO DA CONEXÃO BANCO =======
@@ -249,7 +252,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         ultimo_sync_str = usuario.get("ultimo_sync")
         precisa_sync = not st.session_state.get("sincronizou", False)
 
-        # Sincronismo só se NÃO sincronizou ainda ou for pelo botão!
+        # SINCRONIZA SÓ SE PRECISAR
         if precisa_sync:
             with st.spinner("Sincronizando dados do banco..."):
                 sucesso, mensagem_erro = sync_mysql_to_sqlite()
@@ -257,14 +260,14 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                 if sucesso:
                     atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
                     st.session_state["usuario"]["ultimo_sync"] = novo_sync
-                    st.success("Dados atualizados!")
                     st.session_state["sincronizou"] = True
+                    st.success("Dados atualizados!")
                 else:
                     st.error(f"Erro na sincronização: {mensagem_erro}")
         else:
             st.info(f"Última sincronização: {ultimo_sync_str}")
 
-        # Botão manual sempre faz o sincronismo e reseta o flag
+        # Botão manual
         if st.button("🔄 Sincronizar agora"):
             with st.spinner("Sincronizando dados do banco..."):
                 sucesso, mensagem_erro = sync_mysql_to_sqlite()
@@ -272,8 +275,8 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                 if sucesso:
                     atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
                     st.session_state["usuario"]["ultimo_sync"] = novo_sync
-                    st.success("Dados atualizados manualmente!")
                     st.session_state["sincronizou"] = True
+                    st.success("Dados atualizados manualmente!")
                 else:
                     st.error(f"Erro na sincronização: {mensagem_erro}")
 
@@ -300,7 +303,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         else:
             carregar_indicadores(sqlite_path, data_inicio, data_fim)
 
-        # =================== PERGUNTA IA =========================
+        # Entrada IA
         with st.form("pergunta_form"):
             pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
             submitted = st.form_submit_button("🧠 Consultar IA")
