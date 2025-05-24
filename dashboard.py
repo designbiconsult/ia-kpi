@@ -151,7 +151,11 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
             st.session_state["mysql_password"] = usuario[7]
             st.session_state["mysql_database"] = usuario[8]
             st.session_state["sqlite_path"] = f"data/cliente_{usuario[0]}.db"
-            st.session_state["sincronizou"] = False
+            # Só sincroniza SE NUNCA foi sincronizado
+            if not usuario[10] or not os.path.exists(st.session_state["sqlite_path"]):
+                st.session_state["sincronizou"] = False
+            else:
+                st.session_state["sincronizou"] = True
             st.session_state["pagina"] = "dashboard"
             st.rerun()
         else:
@@ -223,7 +227,7 @@ elif st.session_state.get("pagina") == "conexao":
             st.session_state["mysql_password"] = senha_banco
             st.session_state["mysql_database"] = schema
             st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
-            st.session_state["sincronizou"] = False
+            st.session_state["sincronizou"] = False  # força nova sync ao voltar pro dashboard
             st.success("Conexão salva com sucesso!")
             st.session_state["pagina"] = "dashboard"
             st.rerun()
@@ -250,6 +254,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         sqlite_path = f"data/cliente_{id_usuario}.db"
         intervalo_sync = usuario.get("intervalo_sync", 60)
         ultimo_sync_str = usuario.get("ultimo_sync")
+
         precisa_sync = not st.session_state.get("sincronizou", False)
 
         # SINCRONIZA SÓ SE PRECISAR
