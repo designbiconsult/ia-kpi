@@ -12,7 +12,7 @@ os.makedirs("data", exist_ok=True)
 
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
-# Criação da tabela de usuários (com campos extras para sincronização e conexão)
+# Criação da tabela de usuários
 with sqlite3.connect(DB_PATH, timeout=10) as conn:
     c = conn.cursor()
     c.execute('''
@@ -36,8 +36,6 @@ if "logado" not in st.session_state:
     st.session_state["logado"] = False
 if "pagina" not in st.session_state:
     st.session_state["pagina"] = "login"
-if "sincronizou" not in st.session_state:
-    st.session_state["sincronizou"] = False
 
 def autenticar(email, senha):
     with sqlite3.connect(DB_PATH, timeout=10) as conn:
@@ -55,6 +53,7 @@ def atualizar_usuario_campo(id_usuario, campo, valor):
 def carregar_indicadores(sqlite_path, data_inicio, data_fim):
     try:
         with sqlite3.connect(sqlite_path, timeout=10) as conn:
+            # 1. Modelos distintos produzidos no período (referência)
             total_modelos = pd.read_sql(f"""
                 SELECT COUNT(DISTINCT PROD.REFERENCIA_PRODUTO) AS total
                 FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
@@ -63,6 +62,7 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
                   AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
             """, conn)["total"][0] or 0
 
+            # 2. Quantidade total produzida no período
             qtd_produzida = pd.read_sql(f"""
                 SELECT SUM(QTD_MOVIMENTACAO) as total
                 FROM VW_CTO_ORDEM_PRODUCAO_ITEM
@@ -70,6 +70,7 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
                   AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
             """, conn)["total"][0] or 0
 
+            # 3. Produto mais produzido no período
             produto_top = pd.read_sql(f"""
                 SELECT PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
                 FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
@@ -83,6 +84,7 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
             nome_produto = produto_top["DESCRICAO_PRODUTO"][0] if not produto_top.empty else "Nenhum"
             qtd_produto = produto_top["total"][0] if not produto_top.empty else 0
 
+            # 4. Gráfico de produção por mês (últimos 6 meses ou período)
             grafico_df = pd.read_sql(f"""
                 SELECT strftime('%Y-%m', DATA_MOVIMENTACAO) as mes, SUM(QTD_MOVIMENTACAO) as total
                 FROM VW_CTO_ORDEM_PRODUCAO_ITEM
@@ -116,7 +118,6 @@ if st.session_state.get("logado"):
         st.markdown("---")
         if st.button("⚙️ Configurar conexão"):
             st.session_state["pagina"] = "conexao"
-            st.session_state["sincronizou"] = False  # força nova sync se conexão mudar
             st.rerun()
         if st.button("Sair"):
             st.session_state["logado"] = False
@@ -145,18 +146,15 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
                 "intervalo_sync": usuario[9] or 60,
                 "ultimo_sync": usuario[10]
             }
+            # Atualize variáveis de sessão para sync
             st.session_state["mysql_host"] = usuario[4]
             st.session_state["mysql_port"] = usuario[5]
             st.session_state["mysql_user"] = usuario[6]
             st.session_state["mysql_password"] = usuario[7]
             st.session_state["mysql_database"] = usuario[8]
             st.session_state["sqlite_path"] = f"data/cliente_{usuario[0]}.db"
-            # Só sincroniza SE NUNCA foi sincronizado
-            if not usuario[10] or not os.path.exists(st.session_state["sqlite_path"]):
-                st.session_state["sincronizou"] = False
-            else:
-                st.session_state["sincronizou"] = True
             st.session_state["pagina"] = "dashboard"
+            st.session_state["sincronizou"] = False
             st.rerun()
         else:
             st.error("Credenciais inválidas.")
@@ -189,7 +187,6 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
                     conn.commit()
                 st.success("Cadastro realizado com sucesso! Faça login para continuar.")
                 st.session_state["pagina"] = "login"
-                st.session_state["sincronizou"] = False
                 st.rerun()
 
 # ======== CONFIGURAÇÃO DA CONEXÃO BANCO =======
@@ -213,6 +210,7 @@ elif st.session_state.get("pagina") == "conexao":
                     (host, porta, usuario_banco, senha_banco, schema, intervalo_sync, usuario["id"])
                 )
                 conn.commit()
+            # Atualiza usuário e session_state para sincronização!
             st.session_state["usuario"].update({
                 "host": host,
                 "porta": porta,
@@ -227,7 +225,7 @@ elif st.session_state.get("pagina") == "conexao":
             st.session_state["mysql_password"] = senha_banco
             st.session_state["mysql_database"] = schema
             st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
-            st.session_state["sincronizou"] = False  # força nova sync ao voltar pro dashboard
+            st.session_state["sincronizou"] = False
             st.success("Conexão salva com sucesso!")
             st.session_state["pagina"] = "dashboard"
             st.rerun()
@@ -240,6 +238,7 @@ elif st.session_state.get("pagina") == "conexao":
 elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
+    # Atualiza variáveis de conexão na sessão SEMPRE
     st.session_state["mysql_host"] = usuario["host"]
     st.session_state["mysql_port"] = usuario["porta"]
     st.session_state["mysql_user"] = usuario["usuario_banco"]
@@ -308,7 +307,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         else:
             carregar_indicadores(sqlite_path, data_inicio, data_fim)
 
-        # Entrada IA
+        # Entrada IA (NUNCA sincroniza aqui)
         with st.form("pergunta_form"):
             pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
             submitted = st.form_submit_button("🧠 Consultar IA")
