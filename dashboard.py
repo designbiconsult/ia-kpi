@@ -10,9 +10,7 @@ from sync.sync_db import sync_mysql_to_sqlite
 DB_PATH = "data/database.db"
 os.makedirs("data", exist_ok=True)
 
-st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
-
-# Criação da tabela de usuários
+# Criação da tabela de usuários (garante upgrade de schema)
 with sqlite3.connect(DB_PATH, timeout=10) as conn:
     c = conn.cursor()
     c.execute('''
@@ -41,8 +39,7 @@ def autenticar(email, senha):
     with sqlite3.connect(DB_PATH, timeout=10) as conn:
         c = conn.cursor()
         c.execute("SELECT * FROM usuarios WHERE email = ? AND senha = ?", (email, senha))
-        resultado = c.fetchone()
-    return resultado
+        return c.fetchone()
 
 def atualizar_usuario_campo(id_usuario, campo, valor):
     with sqlite3.connect(DB_PATH, timeout=10) as conn:
@@ -53,7 +50,6 @@ def atualizar_usuario_campo(id_usuario, campo, valor):
 def carregar_indicadores(sqlite_path, data_inicio, data_fim):
     try:
         with sqlite3.connect(sqlite_path, timeout=10) as conn:
-            # 1. Modelos distintos produzidos no período (referência)
             total_modelos = pd.read_sql(f"""
                 SELECT COUNT(DISTINCT PROD.REFERENCIA_PRODUTO) AS total
                 FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
@@ -62,7 +58,6 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
                   AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
             """, conn)["total"][0] or 0
 
-            # 2. Quantidade total produzida no período
             qtd_produzida = pd.read_sql(f"""
                 SELECT SUM(QTD_MOVIMENTACAO) as total
                 FROM VW_CTO_ORDEM_PRODUCAO_ITEM
@@ -70,7 +65,6 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
                   AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
             """, conn)["total"][0] or 0
 
-            # 3. Produto mais produzido no período
             produto_top = pd.read_sql(f"""
                 SELECT PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
                 FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
@@ -84,7 +78,6 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
             nome_produto = produto_top["DESCRICAO_PRODUTO"][0] if not produto_top.empty else "Nenhum"
             qtd_produto = produto_top["total"][0] if not produto_top.empty else 0
 
-            # 4. Gráfico de produção por mês (últimos 6 meses ou período)
             grafico_df = pd.read_sql(f"""
                 SELECT strftime('%Y-%m', DATA_MOVIMENTACAO) as mes, SUM(QTD_MOVIMENTACAO) as total
                 FROM VW_CTO_ORDEM_PRODUCAO_ITEM
@@ -110,9 +103,8 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
 
     except Exception as e:
         st.error(f"❌ Erro ao carregar indicadores: {e}")
-        st.exception(e)
 
-# ======== SIDEBAR UNIVERSAL =======
+# SIDEBAR universal
 if st.session_state.get("logado"):
     with st.sidebar:
         st.markdown("---")
@@ -122,10 +114,9 @@ if st.session_state.get("logado"):
         if st.button("Sair"):
             st.session_state["logado"] = False
             st.session_state["pagina"] = "login"
-            st.session_state["sincronizou"] = False
             st.rerun()
 
-# ======== LOGIN =======
+# LOGIN
 if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
     st.title("🔐 Login IA KPI")
     email = st.text_input("Email")
@@ -146,7 +137,7 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
                 "intervalo_sync": usuario[9] or 60,
                 "ultimo_sync": usuario[10]
             }
-            # Atualize variáveis de sessão para sync
+            # Variáveis de sessão para sincronismo
             st.session_state["mysql_host"] = usuario[4]
             st.session_state["mysql_port"] = usuario[5]
             st.session_state["mysql_user"] = usuario[6]
@@ -165,7 +156,7 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
         st.session_state["pagina"] = "cadastro"
         st.rerun()
 
-# ======== CADASTRO =======
+# CADASTRO
 elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]:
     st.title("📊 Cadastro de Cliente IA KPI")
     with st.form("cadastro_form"):
@@ -189,7 +180,7 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
                 st.session_state["pagina"] = "login"
                 st.rerun()
 
-# ======== CONFIGURAÇÃO DA CONEXÃO BANCO =======
+# CONFIGURAÇÃO DA CONEXÃO BANCO
 elif st.session_state.get("pagina") == "conexao":
     st.title("⚙️ Configuração da conexão com o banco")
     usuario = st.session_state["usuario"]
@@ -234,11 +225,11 @@ elif st.session_state.get("pagina") == "conexao":
         st.session_state["pagina"] = "dashboard"
         st.rerun()
 
-# =============== DASHBOARD PRINCIPAL (indicadores e IA) ===================
+# DASHBOARD PRINCIPAL (indicadores e IA)
 elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
-    # Atualiza variáveis de conexão na sessão SEMPRE
+
     st.session_state["mysql_host"] = usuario["host"]
     st.session_state["mysql_port"] = usuario["porta"]
     st.session_state["mysql_user"] = usuario["usuario_banco"]
@@ -253,36 +244,43 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         sqlite_path = f"data/cliente_{id_usuario}.db"
         intervalo_sync = usuario.get("intervalo_sync", 60)
         ultimo_sync_str = usuario.get("ultimo_sync")
+        precisa_sync = False
 
-        precisa_sync = not st.session_state.get("sincronizou", False)
+        # Checa sincronização automática (apenas primeira vez por login ou pelo tempo)
+        if not st.session_state.get("sincronizou"):
+            precisa_sync = True
+        else:
+            if not ultimo_sync_str:
+                precisa_sync = True
+            else:
+                try:
+                    dt_ultimo = datetime.fromisoformat(ultimo_sync_str)
+                    if datetime.now() > dt_ultimo + timedelta(minutes=int(intervalo_sync)):
+                        precisa_sync = True
+                except Exception:
+                    precisa_sync = True
 
-        # SINCRONIZA SÓ SE PRECISAR
+        # Executa sincronização se necessário
         if precisa_sync:
             with st.spinner("Sincronizando dados do banco..."):
-                sucesso, mensagem_erro = sync_mysql_to_sqlite()
+                sync_mysql_to_sqlite()
                 novo_sync = datetime.now().isoformat()
-                if sucesso:
-                    atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
-                    st.session_state["usuario"]["ultimo_sync"] = novo_sync
-                    st.session_state["sincronizou"] = True
-                    st.success("Dados atualizados!")
-                else:
-                    st.error(f"Erro na sincronização: {mensagem_erro}")
+                atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
+                st.session_state["usuario"]["ultimo_sync"] = novo_sync
+                st.session_state["sincronizou"] = True
+                st.success("Dados atualizados com sucesso!")
+
         else:
             st.info(f"Última sincronização: {ultimo_sync_str}")
 
         # Botão manual
         if st.button("🔄 Sincronizar agora"):
             with st.spinner("Sincronizando dados do banco..."):
-                sucesso, mensagem_erro = sync_mysql_to_sqlite()
+                sync_mysql_to_sqlite()
                 novo_sync = datetime.now().isoformat()
-                if sucesso:
-                    atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
-                    st.session_state["usuario"]["ultimo_sync"] = novo_sync
-                    st.session_state["sincronizou"] = True
-                    st.success("Dados atualizados manualmente!")
-                else:
-                    st.error(f"Erro na sincronização: {mensagem_erro}")
+                atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
+                st.session_state["usuario"]["ultimo_sync"] = novo_sync
+                st.success("Dados atualizados manualmente!")
 
         # Diagnóstico: tabelas no SQLite
         try:
@@ -307,7 +305,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         else:
             carregar_indicadores(sqlite_path, data_inicio, data_fim)
 
-        # Entrada IA (NUNCA sincroniza aqui)
+        # Entrada IA
         with st.form("pergunta_form"):
             pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
             submitted = st.form_submit_button("🧠 Consultar IA")
