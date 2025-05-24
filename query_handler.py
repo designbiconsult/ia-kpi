@@ -1,6 +1,7 @@
 import requests
 import streamlit as st
 
+# Sua chave OpenRouter – Troque para variáveis de ambiente depois!
 import os
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
