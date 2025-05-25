@@ -2,7 +2,7 @@ import requests
 import streamlit as st
 
 # RECOMENDADO: Use o secrets.toml, mas aqui já vai seu fallback
-OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "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")
+OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "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")
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL = "meta-llama/llama-3.3-70b-instruct:free"  # Modelo gratuito

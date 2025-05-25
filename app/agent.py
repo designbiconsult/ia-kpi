@@ -40,7 +40,7 @@ Pergunta: {pergunta}
     # Chame o modelo (OpenRouter ou outro) para gerar o SQL
     from app.query_handler import OPENROUTER_API_KEY
     OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-    MODEL = "openai/gpt-4-turbo"
+    MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
