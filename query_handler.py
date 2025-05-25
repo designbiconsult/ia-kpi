@@ -1,11 +1,11 @@
 import requests
 import streamlit as st
 
-# Use a sua chave do OpenRouter salva em st.secrets (recomendado), ou direto no código (NÃO recomendado para produção)
-OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "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")
+# Use a sua chave do OpenRouter salva em st.secrets (recomendado)
+OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "")
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "meta-llama/llama-3.3-70b-instruct:free"  # Modelo gratuito (atual) do OpenRouter
+MODEL = "meta-llama/llama-3-70b-instruct:free"  # Modelo gratuito (atual) do OpenRouter
 
 def executar_pergunta(pergunta, sqlite_path):
     st.markdown("#### 🤖 Resposta da IA")
