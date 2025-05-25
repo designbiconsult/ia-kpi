@@ -12,7 +12,6 @@ os.makedirs("data", exist_ok=True)
 
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
-# Criação/upgrade da tabela de usuários (garante campos de sincronização)
 with sqlite3.connect(DB_PATH, timeout=10) as conn:
     c = conn.cursor()
     c.execute('''
@@ -32,7 +31,6 @@ with sqlite3.connect(DB_PATH, timeout=10) as conn:
     ''')
     conn.commit()
 
-# Session state default
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
 if "pagina" not in st.session_state:
@@ -40,12 +38,12 @@ if "pagina" not in st.session_state:
 if "ja_sincronizou" not in st.session_state:
     st.session_state["ja_sincronizou"] = False
 
-# Funções utilitárias
 def autenticar(email, senha):
     with sqlite3.connect(DB_PATH, timeout=10) as conn:
         c = conn.cursor()
         c.execute("SELECT * FROM usuarios WHERE email = ? AND senha = ?", (email, senha))
-        return c.fetchone()
+        resultado = c.fetchone()
+    return resultado
 
 def atualizar_usuario_campo(id_usuario, campo, valor):
     with sqlite3.connect(DB_PATH, timeout=10) as conn:
@@ -56,48 +54,62 @@ def atualizar_usuario_campo(id_usuario, campo, valor):
 def carregar_indicadores(sqlite_path, data_inicio, data_fim):
     try:
         with sqlite3.connect(sqlite_path, timeout=10) as conn:
-            total_modelos = pd.read_sql(f"""
-                SELECT COUNT(DISTINCT PROD.REFERENCIA_PRODUTO) AS total
-                FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
-                JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
-                WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
-                  AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-            """, conn)["total"][0] if conn else 0
+            # Sempre tenta trazer, se não existir, retorna zero
+            try:
+                total_modelos = pd.read_sql(f"""
+                    SELECT COUNT(DISTINCT PROD.REFERENCIA_PRODUTO) AS total
+                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
+                    JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
+                    WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
+                      AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+                """, conn)["total"][0] or 0
+            except:
+                total_modelos = 0
 
-            qtd_produzida = pd.read_sql(f"""
-                SELECT SUM(QTD_MOVIMENTACAO) as total
-                FROM VW_CTO_ORDEM_PRODUCAO_ITEM
-                WHERE TIPO_MOVIMENTACAO = 'Produzida'
-                  AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-            """, conn)["total"][0] if conn else 0
+            try:
+                qtd_produzida = pd.read_sql(f"""
+                    SELECT SUM(QTD_MOVIMENTACAO) as total
+                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM
+                    WHERE TIPO_MOVIMENTACAO = 'Produzida'
+                      AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+                """, conn)["total"][0] or 0
+            except:
+                qtd_produzida = 0
 
-            produto_top = pd.read_sql(f"""
-                SELECT PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
-                FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
-                JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
-                WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
-                  AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                GROUP BY PROD.DESCRICAO_PRODUTO
-                ORDER BY total DESC
-                LIMIT 1
-            """, conn)
-            nome_produto = produto_top["DESCRICAO_PRODUTO"][0] if not produto_top.empty else "Nenhum"
-            qtd_produto = produto_top["total"][0] if not produto_top.empty else 0
+            try:
+                produto_top = pd.read_sql(f"""
+                    SELECT PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
+                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
+                    JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
+                    WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
+                      AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+                    GROUP BY PROD.DESCRICAO_PRODUTO
+                    ORDER BY total DESC
+                    LIMIT 1
+                """, conn)
+                nome_produto = produto_top["DESCRICAO_PRODUTO"][0] if not produto_top.empty else "Nenhum"
+                qtd_produto = produto_top["total"][0] if not produto_top.empty else 0
+            except:
+                nome_produto = "Nenhum"
+                qtd_produto = 0
 
-            grafico_df = pd.read_sql(f"""
-                SELECT strftime('%Y-%m', DATA_MOVIMENTACAO) as mes, SUM(QTD_MOVIMENTACAO) as total
-                FROM VW_CTO_ORDEM_PRODUCAO_ITEM
-                WHERE TIPO_MOVIMENTACAO = 'Produzida'
-                  AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                GROUP BY mes
-                ORDER BY mes
-            """, conn)
+            try:
+                grafico_df = pd.read_sql(f"""
+                    SELECT strftime('%Y-%m', DATA_MOVIMENTACAO) as mes, SUM(QTD_MOVIMENTACAO) as total
+                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM
+                    WHERE TIPO_MOVIMENTACAO = 'Produzida'
+                      AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+                    GROUP BY mes
+                    ORDER BY mes
+                """, conn)
+            except:
+                grafico_df = pd.DataFrame({"mes":[], "total":[]})
 
         st.subheader("📊 Indicadores de Produção")
         col1, col2, col3 = st.columns(3)
-        col1.metric("Modelos produzidos", total_modelos or 0)
-        col2.metric("Total produzido", int(qtd_produzida or 0))
-        col3.metric("Mais produzido", f"{nome_produto} ({int(qtd_produto or 0)})")
+        col1.metric("Modelos produzidos", total_modelos)
+        col2.metric("Total produzido", int(qtd_produzida))
+        col3.metric("Mais produzido", f"{nome_produto} ({int(qtd_produto)})")
 
         st.subheader("📈 Produção por mês no período")
         if not grafico_df.empty:
@@ -108,12 +120,12 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
             ax.set_title("Produção Mensal")
             st.pyplot(fig)
         else:
-            st.info("Sem dados de produção para o período selecionado.")
+            st.info("Não há dados para o período.")
 
     except Exception as e:
         st.error(f"❌ Erro ao carregar indicadores: {e}")
 
-# Sidebar universal
+# =============== SIDEBAR UNIVERSAL ===============
 if st.session_state.get("logado"):
     with st.sidebar:
         st.markdown("---")
@@ -126,7 +138,7 @@ if st.session_state.get("logado"):
             st.session_state["ja_sincronizou"] = False
             st.rerun()
 
-# ======== LOGIN ========
+# =============== LOGIN ===============
 if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
     st.title("🔐 Login IA KPI")
     email = st.text_input("Email")
@@ -165,7 +177,7 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
         st.session_state["pagina"] = "cadastro"
         st.rerun()
 
-# ======== CADASTRO ========
+# =============== CADASTRO ===============
 elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]:
     st.title("📊 Cadastro de Cliente IA KPI")
     with st.form("cadastro_form"):
@@ -189,7 +201,7 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
                 st.session_state["pagina"] = "login"
                 st.rerun()
 
-# ======== CONFIGURAÇÃO DE CONEXÃO ========
+# =============== CONEXÃO BANCO ===============
 elif st.session_state.get("pagina") == "conexao":
     st.title("⚙️ Configuração da conexão com o banco")
     usuario = st.session_state["usuario"]
@@ -233,7 +245,7 @@ elif st.session_state.get("pagina") == "conexao":
         st.session_state["pagina"] = "dashboard"
         st.rerun()
 
-# ======== DASHBOARD PRINCIPAL ========
+# =============== DASHBOARD PRINCIPAL ===============
 elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
@@ -244,6 +256,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
 
+    # Sincronismo só na primeira entrada do dashboard ou via botão
     if not usuario["host"]:
         st.warning("Configure a conexão com o banco de dados para continuar. (Menu lateral)")
     else:
@@ -253,7 +266,6 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         ultimo_sync_str = usuario.get("ultimo_sync")
         precisa_sync = False
 
-        # Sincronismo só na primeira entrada após salvar conexão ou quando clicar manual
         if not st.session_state.get("ja_sincronizou", False):
             if not ultimo_sync_str:
                 precisa_sync = True
@@ -276,6 +288,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                 st.info(f"Última sincronização: {ultimo_sync_str}")
             st.session_state["ja_sincronizou"] = True
 
+        # Botão manual de sincronismo
         if st.button("🔄 Sincronizar agora"):
             with st.spinner("Sincronizando dados do banco..."):
                 sync_mysql_to_sqlite()
@@ -297,7 +310,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         except Exception as e:
             st.sidebar.error(f"Erro ao acessar banco local: {e}")
 
-        # Filtro de datas para indicadores (carrega sempre!)
+        # Filtro de datas para indicadores
         st.subheader("Selecione o período para indicadores de produção")
         hoje = datetime.now().date()
         data_inicio = st.date_input("Data início", value=hoje.replace(day=1))
@@ -307,7 +320,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         else:
             carregar_indicadores(sqlite_path, data_inicio, data_fim)
 
-        # Form da IA: nunca sincroniza! Apenas consulta e responde
+        # Entrada IA (JAMAIS chama sincronismo aqui!)
         with st.form("pergunta_form"):
             pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
             submitted = st.form_submit_button("🧠 Consultar IA")
