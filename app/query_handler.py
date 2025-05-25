@@ -1,11 +1,11 @@
 import requests
 import streamlit as st
 
-# RECOMENDADO: Use o secrets.toml, mas aqui já vai seu fallback
+# Use a sua chave do OpenRouter salva em st.secrets (recomendado), ou direto no código (NÃO recomendado para produção)
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "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")
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "meta-llama/llama-3.3-70b-instruct:free"  # Modelo gratuito
+MODEL = "meta-llama/llama-3.3-70b-instruct:free"  # Modelo gratuito (atual) do OpenRouter
 
 def executar_pergunta(pergunta, sqlite_path):
     st.markdown("#### 🤖 Resposta da IA")
@@ -13,9 +13,13 @@ def executar_pergunta(pergunta, sqlite_path):
         st.info("Digite uma pergunta para a IA.")
         return
 
-    # Mensagem do chat
+    # Mensagem de contexto para a IA
     messages = [
-        {"role": "system", "content": "Você é um assistente de BI e indicadores empresariais. Sempre que necessário, refine as perguntas do usuário pedindo informações adicionais para entregar respostas mais úteis."},
+        {"role": "system", "content": (
+            "Você é um assistente inteligente para análise de indicadores de gestão empresarial. "
+            "Seja objetivo e forneça respostas claras com base nos dados disponíveis. "
+            "Se necessário, peça esclarecimentos ao usuário sobre o tipo de análise desejada (ex: sintética ou analítica)."
+        )},
         {"role": "user", "content": pergunta},
     ]
 
@@ -36,3 +40,4 @@ def executar_pergunta(pergunta, sqlite_path):
         st.success(resposta)
     except Exception as e:
         st.error(f"Erro ao acessar o OpenRouter: {e}")
+        st.exception(e)
