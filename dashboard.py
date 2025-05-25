@@ -4,7 +4,7 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
-from app.query_handler import executar_pergunta
+from app.query_handler import perguntar_ia_com_sql
 from sync.sync_db import sync_mysql_to_sqlite
 
 DB_PATH = "data/database.db"
@@ -54,7 +54,6 @@ def atualizar_usuario_campo(id_usuario, campo, valor):
 def carregar_indicadores(sqlite_path, data_inicio, data_fim):
     try:
         with sqlite3.connect(sqlite_path, timeout=10) as conn:
-            # Indicadores protegidos para não quebrar se não houver tabelas
             try:
                 total_modelos = pd.read_sql(f"""
                     SELECT COUNT(DISTINCT PROD.REFERENCIA_PRODUTO) AS total
@@ -65,7 +64,6 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
                 """, conn)["total"][0] or 0
             except:
                 total_modelos = 0
-
             try:
                 qtd_produzida = pd.read_sql(f"""
                     SELECT SUM(QTD_MOVIMENTACAO) as total
@@ -75,7 +73,6 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
                 """, conn)["total"][0] or 0
             except:
                 qtd_produzida = 0
-
             try:
                 produto_top = pd.read_sql(f"""
                     SELECT PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
@@ -92,7 +89,6 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
             except:
                 nome_produto = "Nenhum"
                 qtd_produto = 0
-
             try:
                 grafico_df = pd.read_sql(f"""
                     SELECT strftime('%Y-%m', DATA_MOVIMENTACAO) as mes, SUM(QTD_MOVIMENTACAO) as total
@@ -121,7 +117,6 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
             st.pyplot(fig)
         else:
             st.info("Não há dados para o período.")
-
     except Exception as e:
         st.error(f"❌ Erro ao carregar indicadores: {e}")
 
@@ -256,6 +251,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
 
+    # Sincronismo só na primeira entrada do dashboard ou via botão
     if not usuario["host"]:
         st.warning("Configure a conexão com o banco de dados para continuar. (Menu lateral)")
     else:
@@ -319,9 +315,9 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         else:
             carregar_indicadores(sqlite_path, data_inicio, data_fim)
 
-        # Entrada IA (JAMAIS chama sincronismo aqui!)
+        # Entrada IA (NUNCA chama sincronismo aqui!)
         with st.form("pergunta_form"):
             pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
             submitted = st.form_submit_button("🧠 Consultar IA")
             if submitted and pergunta.strip():
-                executar_pergunta(pergunta, sqlite_path)
+                perguntar_ia_com_sql(pergunta, sqlite_path)
