@@ -1,47 +1,17 @@
-import os
-import pandas as pd
 import sqlite3
+import pandas as pd
+import streamlit as st
 import requests
 from sqlalchemy import create_engine, inspect
-import streamlit as st
 
-def sync_mysql_to_sqlite_and_run_agent(pergunta: str):
-    mysql_host = st.session_state.get("mysql_host")
-    mysql_user = st.session_state.get("mysql_user")
-    mysql_password = st.session_state.get("mysql_password")
-    mysql_database = st.session_state.get("mysql_database")
-    sqlite_path = st.session_state.get("sqlite_path", "data/cliente_dados.db")
-
-    try:
-        mysql_port = int(st.session_state.get("mysql_port"))
-    except (ValueError, TypeError):
-        st.error("⚠️ Porta inválida.")
-        return None
-
-    mysql_uri = f"mysql+pymysql://{mysql_user}:{mysql_password}@{mysql_host}:{mysql_port}/{mysql_database}?charset=utf8"
-    mysql_engine = create_engine(mysql_uri)
-
-    os.makedirs(os.path.dirname(sqlite_path), exist_ok=True)
+def run_agent(pergunta: str, sqlite_path: str):
+    """
+    Lê o schema do banco SQLite local e monta o prompt para a IA gerar a consulta SQL.
+    NÃO sincroniza nada aqui!
+    """
     sqlite_engine = create_engine(f"sqlite:///{sqlite_path}")
-
-    try:
-        inspector = inspect(mysql_engine)
-        views = inspector.get_view_names(schema=mysql_database)
-        tables = inspector.get_table_names(schema=mysql_database)
-        todas = views + tables
-
-        with sqlite_engine.begin() as conn_sqlite:
-            for nome in todas:
-                st.write(f"🔄 Sincronizando: {nome}")
-                df = pd.read_sql(f"SELECT * FROM `{mysql_database}`.`{nome}`", mysql_engine)
-                df.to_sql(nome, conn_sqlite, if_exists="replace", index=False)
-
-        st.success("✅ Views e tabelas sincronizadas com sucesso.")
-    except Exception as e:
-        st.error(f"Erro ao sincronizar dados: {e}")
-        return None
-
     inspector = inspect(sqlite_engine)
+    todas = inspector.get_table_names()
 
     explicacoes = {
         "VW_CTO_PRODUTO": "Cadastro completo dos produtos da empresa. Contém: código interno, nome, descrição, NCM, tipo (acabado, matéria-prima), origem, cor, tamanho, código de barras e código de produto com defeito.",
@@ -50,16 +20,14 @@ def sync_mysql_to_sqlite_and_run_agent(pergunta: str):
     }
 
     schema_description = ""
-    st.markdown("### 🔍 Objetos sincronizados:")
     for nome in todas:
         columns = inspector.get_columns(nome)
         colnames = ", ".join(col["name"] for col in columns)
         descricao = explicacoes.get(nome, "Sem descrição detalhada.")
         schema_description += f"- {nome}: {descricao}. Colunas principais: {colnames}\n"
-        st.markdown(f"- `{nome}`")
 
     prompt = f"""
-Você é um assistente de BI. O usuário fará perguntas sobre os dados do banco. 
+Você é um assistente de BI. O usuário fará perguntas sobre os dados do banco.
 Responda com uma **consulta SQL compatível com SQLite**, usando somente as views e colunas listadas abaixo.
 Não invente nomes. Responda somente com o SQL entre um bloco ```sql e ```.
 
@@ -69,30 +37,30 @@ Objetos disponíveis:
 Pergunta: {pergunta}
 """
 
-    try:
-        response = requests.post(
-            "http://localhost:11434/api/chat",
-            json={
-                "model": "mistral",
-                "messages": [
-                    {"role": "system", "content": "Você é um assistente de BI que responde com SQL."},
-                    {"role": "user", "content": prompt}
-                ],
-                "stream": False
-            },
-            timeout=30
-        )
+    # Chame o modelo (OpenRouter ou outro) para gerar o SQL
+    from app.query_handler import OPENROUTER_API_KEY
+    OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+    MODEL = "openai/gpt-4-turbo"
 
-        if response.status_code == 200:
-            content = response.json()["message"]["content"].strip()
-            sql_code = content.split("```sql")[-1].replace("```", "").strip()
-            return sqlite_engine, sql_code
-        else:
-            st.error(f"Erro ao consultar o modelo: {response.text}")
-            return None
-    except requests.exceptions.Timeout:
-        st.error("⏱ Tempo de resposta excedido (timeout). O modelo demorou demais para responder.")
-        return None
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    body = {
+        "model": MODEL,
+        "messages": [
+            {"role": "system", "content": "Você é um assistente de BI que responde com SQL."},
+            {"role": "user", "content": prompt}
+        ],
+        "max_tokens": 600,
+        "temperature": 0.2
+    }
+    try:
+        response = requests.post(OPENROUTER_API_URL, headers=headers, json=body, timeout=60)
+        response.raise_for_status()
+        content = response.json()["choices"][0]["message"]["content"].strip()
+        sql_code = content.split("```sql")[-1].replace("```", "").strip()
+        return sqlite_engine, sql_code
     except Exception as e:
-        st.error(f"Erro ao acessar o Ollama: {e}")
+        st.error(f"Erro ao acessar o OpenRouter: {e}")
         return None

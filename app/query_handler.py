@@ -1,12 +1,15 @@
 import streamlit as st
-from app.agent import sync_mysql_to_sqlite_and_run_agent
+from app.agent import run_agent
 import pandas as pd
 import time
 
+# Coloque sua chave de API aqui se não estiver usando secrets:
+OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "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")
+
 def executar_pergunta(pergunta: str, sqlite_path: str):
     """
-    Executa a pergunta do usuário utilizando o modelo local e exibe o resultado do SQL sugerido,
-    com um contador de tempo visível.
+    Executa a pergunta do usuário utilizando o modelo e exibe o resultado do SQL sugerido.
+    Não chama sincronismo! Só trabalha com o banco local.
     """
     if not pergunta:
         st.warning("Digite uma pergunta para continuar.")
@@ -21,10 +24,9 @@ def executar_pergunta(pergunta: str, sqlite_path: str):
     resultado = None
 
     try:
-        # Mostra contador em tempo real enquanto executa a função
         while resultado is None:
             tempo.text(f"{int(time.time() - start_time)} segundos...")
-            resultado = sync_mysql_to_sqlite_and_run_agent(pergunta)
+            resultado = run_agent(pergunta, sqlite_path)
             break
     except Exception as e:
         st.error(f"Erro ao consultar a IA: {e}")
