@@ -1,11 +1,9 @@
 import requests
 import streamlit as st
 
-# Use a sua chave do OpenRouter salva em st.secrets (recomendado)
-OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "")
-
+OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "")  # Nunca deixe exposta!
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "meta-llama/llama-3-70b-instruct:free"  # Modelo gratuito (atual) do OpenRouter
+MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 
 def executar_pergunta(pergunta, sqlite_path):
     st.markdown("#### 🤖 Resposta da IA")
@@ -17,7 +15,7 @@ def executar_pergunta(pergunta, sqlite_path):
     messages = [
         {"role": "system", "content": (
             "Você é um assistente inteligente para análise de indicadores de gestão empresarial. "
-            "Seja objetivo e forneça respostas claras com base nos dados disponíveis. "
+            "Seja objetivo e forneça respostas claras com base nos dados disponíveis no banco SQLite do projeto. "
             "Se necessário, peça esclarecimentos ao usuário sobre o tipo de análise desejada (ex: sintética ou analítica)."
         )},
         {"role": "user", "content": pergunta},

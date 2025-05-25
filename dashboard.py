@@ -4,7 +4,7 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
-from app.query_handler import perguntar_ia_com_sql
+from app.query_handler import executar_pergunta
 from sync.sync_db import sync_mysql_to_sqlite
 
 DB_PATH = "data/database.db"
@@ -54,6 +54,7 @@ def atualizar_usuario_campo(id_usuario, campo, valor):
 def carregar_indicadores(sqlite_path, data_inicio, data_fim):
     try:
         with sqlite3.connect(sqlite_path, timeout=10) as conn:
+            # Indicadores protegidos para não quebrar se não houver tabelas
             try:
                 total_modelos = pd.read_sql(f"""
                     SELECT COUNT(DISTINCT PROD.REFERENCIA_PRODUTO) AS total
@@ -124,6 +125,7 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
     except Exception as e:
         st.error(f"❌ Erro ao carregar indicadores: {e}")
 
+# =============== SIDEBAR UNIVERSAL ===============
 if st.session_state.get("logado"):
     with st.sidebar:
         st.markdown("---")
@@ -136,6 +138,7 @@ if st.session_state.get("logado"):
             st.session_state["ja_sincronizou"] = False
             st.rerun()
 
+# =============== LOGIN ===============
 if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
     st.title("🔐 Login IA KPI")
     email = st.text_input("Email")
@@ -174,6 +177,7 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
         st.session_state["pagina"] = "cadastro"
         st.rerun()
 
+# =============== CADASTRO ===============
 elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]:
     st.title("📊 Cadastro de Cliente IA KPI")
     with st.form("cadastro_form"):
@@ -197,6 +201,7 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
                 st.session_state["pagina"] = "login"
                 st.rerun()
 
+# =============== CONEXÃO BANCO ===============
 elif st.session_state.get("pagina") == "conexao":
     st.title("⚙️ Configuração da conexão com o banco")
     usuario = st.session_state["usuario"]
@@ -240,6 +245,7 @@ elif st.session_state.get("pagina") == "conexao":
         st.session_state["pagina"] = "dashboard"
         st.rerun()
 
+# =============== DASHBOARD PRINCIPAL ===============
 elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
@@ -281,6 +287,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                 st.info(f"Última sincronização: {ultimo_sync_str}")
             st.session_state["ja_sincronizou"] = True
 
+        # Botão manual de sincronismo
         if st.button("🔄 Sincronizar agora"):
             with st.spinner("Sincronizando dados do banco..."):
                 sync_mysql_to_sqlite()
@@ -289,6 +296,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                 st.session_state["usuario"]["ultimo_sync"] = novo_sync
                 st.success("Dados atualizados manualmente!")
 
+        # Diagnóstico: tabelas no SQLite
         try:
             with sqlite3.connect(sqlite_path) as conn_debug:
                 tabelas = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", conn_debug)
@@ -301,6 +309,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         except Exception as e:
             st.sidebar.error(f"Erro ao acessar banco local: {e}")
 
+        # Filtro de datas para indicadores
         st.subheader("Selecione o período para indicadores de produção")
         hoje = datetime.now().date()
         data_inicio = st.date_input("Data início", value=hoje.replace(day=1))
@@ -310,9 +319,9 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         else:
             carregar_indicadores(sqlite_path, data_inicio, data_fim)
 
-        # NOVO FLUXO DE PERGUNTA À IA: NUNCA CHAMA SINCRONISMO!
+        # Entrada IA (JAMAIS chama sincronismo aqui!)
         with st.form("pergunta_form"):
             pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
             submitted = st.form_submit_button("🧠 Consultar IA")
             if submitted and pergunta.strip():
-                perguntar_ia_com_sql(pergunta, sqlite_path)
+                executar_pergunta(pergunta, sqlite_path)
