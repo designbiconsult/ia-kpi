@@ -5,7 +5,7 @@ import streamlit as st
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "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")
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "meta-llama/llama-3-70b-instruct"  # Modelo gratuito
+MODEL = "meta-llama/llama-3.3-70b-instruct:free"  # Modelo gratuito
 
 def executar_pergunta(pergunta, sqlite_path):
     st.markdown("#### 🤖 Resposta da IA")
