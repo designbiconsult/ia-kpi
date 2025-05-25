@@ -1,9 +1,11 @@
 import requests
 import streamlit as st
 
+# RECOMENDADO: Use o secrets.toml, mas aqui já vai seu fallback
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "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")
+
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "openai/gpt-4-turbo"
+MODEL = "meta-llama/llama-3-70b-instruct"  # Modelo gratuito
 
 def executar_pergunta(pergunta, sqlite_path):
     st.markdown("#### 🤖 Resposta da IA")
@@ -11,8 +13,9 @@ def executar_pergunta(pergunta, sqlite_path):
         st.info("Digite uma pergunta para a IA.")
         return
 
+    # Mensagem do chat
     messages = [
-        {"role": "system", "content": "Você é um assistente inteligente para análise de indicadores de gestão empresarial. Seja objetivo e forneça respostas claras com base nos dados disponíveis."},
+        {"role": "system", "content": "Você é um assistente de BI e indicadores empresariais. Sempre que necessário, refine as perguntas do usuário pedindo informações adicionais para entregar respostas mais úteis."},
         {"role": "user", "content": pergunta},
     ]
 
@@ -33,4 +36,3 @@ def executar_pergunta(pergunta, sqlite_path):
         st.success(resposta)
     except Exception as e:
         st.error(f"Erro ao acessar o OpenRouter: {e}")
-        st.exception(e)

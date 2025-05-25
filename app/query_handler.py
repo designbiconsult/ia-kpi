@@ -1,48 +1,38 @@
+import requests
 import streamlit as st
-from app.agent import run_agent
-import pandas as pd
-import time
 
-# Coloque sua chave de API aqui se não estiver usando secrets:
+# RECOMENDADO: Use o secrets.toml, mas aqui já vai seu fallback
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "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")
 
-def executar_pergunta(pergunta: str, sqlite_path: str):
-    """
-    Executa a pergunta do usuário utilizando o modelo e exibe o resultado do SQL sugerido.
-    Não chama sincronismo! Só trabalha com o banco local.
-    """
-    if not pergunta:
-        st.warning("Digite uma pergunta para continuar.")
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+MODEL = "meta-llama/llama-3-70b-instruct"  # Modelo gratuito
+
+def executar_pergunta(pergunta, sqlite_path):
+    st.markdown("#### 🤖 Resposta da IA")
+    if not pergunta.strip():
+        st.info("Digite uma pergunta para a IA.")
         return
 
-    st.subheader("⏱ Tempo de execução")
-    tempo = st.empty()
-    status = st.empty()
-    status.info("Consultando a IA...")
+    # Mensagem do chat
+    messages = [
+        {"role": "system", "content": "Você é um assistente de BI e indicadores empresariais. Sempre que necessário, refine as perguntas do usuário pedindo informações adicionais para entregar respostas mais úteis."},
+        {"role": "user", "content": pergunta},
+    ]
 
-    start_time = time.time()
-    resultado = None
-
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    body = {
+        "model": MODEL,
+        "messages": messages,
+        "max_tokens": 800,
+        "temperature": 0.2
+    }
     try:
-        while resultado is None:
-            tempo.text(f"{int(time.time() - start_time)} segundos...")
-            resultado = run_agent(pergunta, sqlite_path)
-            break
+        response = requests.post(OPENROUTER_API_URL, headers=headers, json=body, timeout=45)
+        response.raise_for_status()
+        resposta = response.json()["choices"][0]["message"]["content"]
+        st.success(resposta)
     except Exception as e:
-        st.error(f"Erro ao consultar a IA: {e}")
-        return
-
-    if not resultado:
-        return
-
-    sqlite_engine, sql_code = resultado
-
-    st.subheader("📄 Consulta sugerida pela IA:")
-    st.code(sql_code, language="sql")
-
-    if st.button("Executar consulta"):
-        try:
-            df_result = pd.read_sql(sql_code, con=sqlite_engine)
-            st.dataframe(df_result, use_container_width=True)
-        except Exception as e:
-            st.error(f"Erro ao executar SQL: {e}")
+        st.error(f"Erro ao acessar o OpenRouter: {e}")
