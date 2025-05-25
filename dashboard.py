@@ -52,78 +52,75 @@ def atualizar_usuario_campo(id_usuario, campo, valor):
         conn.commit()
 
 def carregar_indicadores(sqlite_path, data_inicio, data_fim):
-    try:
-        with sqlite3.connect(sqlite_path, timeout=10) as conn:
-            # Sempre tenta trazer, se não existir, retorna zero
-            try:
-                total_modelos = pd.read_sql(f"""
-                    SELECT COUNT(DISTINCT PROD.REFERENCIA_PRODUTO) AS total
-                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
-                    JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
-                    WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
-                      AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                """, conn)["total"][0] or 0
-            except:
-                total_modelos = 0
+    total_modelos, qtd_produzida, nome_produto, qtd_produto, grafico_df = 0, 0, "Nenhum", 0, pd.DataFrame({"mes":[], "total":[]})
+    if os.path.exists(sqlite_path):
+        try:
+            with sqlite3.connect(sqlite_path, timeout=10) as conn:
+                try:
+                    total_modelos = pd.read_sql(f"""
+                        SELECT COUNT(DISTINCT PROD.REFERENCIA_PRODUTO) AS total
+                        FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
+                        JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
+                        WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
+                          AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+                    """, conn)["total"][0] or 0
+                except: pass
 
-            try:
-                qtd_produzida = pd.read_sql(f"""
-                    SELECT SUM(QTD_MOVIMENTACAO) as total
-                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM
-                    WHERE TIPO_MOVIMENTACAO = 'Produzida'
-                      AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                """, conn)["total"][0] or 0
-            except:
-                qtd_produzida = 0
+                try:
+                    qtd_produzida = pd.read_sql(f"""
+                        SELECT SUM(QTD_MOVIMENTACAO) as total
+                        FROM VW_CTO_ORDEM_PRODUCAO_ITEM
+                        WHERE TIPO_MOVIMENTACAO = 'Produzida'
+                          AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+                    """, conn)["total"][0] or 0
+                except: pass
 
-            try:
-                produto_top = pd.read_sql(f"""
-                    SELECT PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
-                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
-                    JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
-                    WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
-                      AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                    GROUP BY PROD.DESCRICAO_PRODUTO
-                    ORDER BY total DESC
-                    LIMIT 1
-                """, conn)
-                nome_produto = produto_top["DESCRICAO_PRODUTO"][0] if not produto_top.empty else "Nenhum"
-                qtd_produto = produto_top["total"][0] if not produto_top.empty else 0
-            except:
-                nome_produto = "Nenhum"
-                qtd_produto = 0
+                try:
+                    produto_top = pd.read_sql(f"""
+                        SELECT PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
+                        FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
+                        JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
+                        WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
+                          AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+                        GROUP BY PROD.DESCRICAO_PRODUTO
+                        ORDER BY total DESC
+                        LIMIT 1
+                    """, conn)
+                    if not produto_top.empty:
+                        nome_produto = produto_top["DESCRICAO_PRODUTO"][0]
+                        qtd_produto = produto_top["total"][0]
+                except: pass
 
-            try:
-                grafico_df = pd.read_sql(f"""
-                    SELECT strftime('%Y-%m', DATA_MOVIMENTACAO) as mes, SUM(QTD_MOVIMENTACAO) as total
-                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM
-                    WHERE TIPO_MOVIMENTACAO = 'Produzida'
-                      AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                    GROUP BY mes
-                    ORDER BY mes
-                """, conn)
-            except:
-                grafico_df = pd.DataFrame({"mes":[], "total":[]})
+                try:
+                    grafico_df = pd.read_sql(f"""
+                        SELECT strftime('%Y-%m', DATA_MOVIMENTACAO) as mes, SUM(QTD_MOVIMENTACAO) as total
+                        FROM VW_CTO_ORDEM_PRODUCAO_ITEM
+                        WHERE TIPO_MOVIMENTACAO = 'Produzida'
+                          AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+                        GROUP BY mes
+                        ORDER BY mes
+                    """, conn)
+                except: pass
+        except Exception as e:
+            st.error(f"❌ Erro ao carregar indicadores: {e}")
 
-        st.subheader("📊 Indicadores de Produção")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Modelos produzidos", total_modelos)
-        col2.metric("Total produzido", int(qtd_produzida))
-        col3.metric("Mais produzido", f"{nome_produto} ({int(qtd_produto)})")
+    # Renderiza SEMPRE o layout dos indicadores, com valores zerados se não houver dados
+    st.subheader("📊 Indicadores de Produção")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Modelos produzidos", total_modelos)
+    col2.metric("Total produzido", int(qtd_produzida))
+    col3.metric("Mais produzido", f"{nome_produto} ({int(qtd_produto)})")
 
-        st.subheader("📈 Produção por mês no período")
-        if not grafico_df.empty:
-            fig, ax = plt.subplots()
-            ax.bar(grafico_df["mes"], grafico_df["total"])
-            ax.set_ylabel("Qtd Produzida")
-            ax.set_xlabel("Mês")
-            ax.set_title("Produção Mensal")
-            st.pyplot(fig)
-        else:
-            st.info("Não há dados para o período.")
-
-    except Exception as e:
-        st.error(f"❌ Erro ao carregar indicadores: {e}")
+    st.subheader("📈 Produção por mês no período")
+    if not grafico_df.empty:
+        fig, ax = plt.subplots()
+        ax.bar(grafico_df["mes"], grafico_df["total"])
+        ax.set_ylabel("Qtd Produzida")
+        ax.set_xlabel("Mês")
+        ax.set_title("Produção Mensal")
+        st.pyplot(fig)
+    else:
+        st.info("Não há dados para o período.")
 
 # =============== SIDEBAR UNIVERSAL ===============
 if st.session_state.get("logado"):
@@ -310,19 +307,19 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         except Exception as e:
             st.sidebar.error(f"Erro ao acessar banco local: {e}")
 
-        # Filtro de datas para indicadores
-        st.subheader("Selecione o período para indicadores de produção")
-        hoje = datetime.now().date()
-        data_inicio = st.date_input("Data início", value=hoje.replace(day=1))
-        data_fim = st.date_input("Data fim", value=hoje)
-        if data_fim < data_inicio:
-            st.error("Data final deve ser igual ou posterior à data inicial.")
-        else:
-            carregar_indicadores(sqlite_path, data_inicio, data_fim)
+    # Filtro de datas para indicadores (MESMO sem sincronismo, SEMPRE mostra os indicadores)
+    st.subheader("Selecione o período para indicadores de produção")
+    hoje = datetime.now().date()
+    data_inicio = st.date_input("Data início", value=hoje.replace(day=1))
+    data_fim = st.date_input("Data fim", value=hoje)
+    if data_fim < data_inicio:
+        st.error("Data final deve ser igual ou posterior à data inicial.")
+    else:
+        carregar_indicadores(st.session_state["sqlite_path"], data_inicio, data_fim)
 
-        # Entrada IA (JAMAIS chama sincronismo aqui!)
-        with st.form("pergunta_form"):
-            pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
-            submitted = st.form_submit_button("🧠 Consultar IA")
-            if submitted and pergunta.strip():
-                executar_pergunta(pergunta, sqlite_path)
+    # Entrada IA (JAMAIS chama sincronismo aqui!)
+    with st.form("pergunta_form"):
+        pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
+        submitted = st.form_submit_button("🧠 Consultar IA")
+        if submitted and pergunta.strip():
+            executar_pergunta(pergunta, st.session_state["sqlite_path"])
