@@ -1,18 +1,24 @@
 import requests
 import streamlit as st
 import sqlite3
+import pandas as pd
 
-OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY")
+# Pega a chave da API do OpenRouter a partir do secrets.toml
+OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "")
+
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+MODEL = "meta-llama/llama-3.3-70b-instruct:free"  # Modelo gratuito
 
-def carregar_estrutura(sqlite_path):
+def get_estrutura_dinamica(sqlite_path):
+    """Busca estrutura dinâmica se existir"""
     try:
         with sqlite3.connect(sqlite_path) as conn:
             df = pd.read_sql("SELECT tabela, coluna, tipo, exemplo, descricao FROM estrutura_dinamica", conn)
-        return df
+        if not df.empty:
+            return df
     except Exception as e:
         return None
+    return None
 
 def executar_pergunta(pergunta, sqlite_path):
     st.markdown("#### 🤖 Resposta da IA")
@@ -20,24 +26,33 @@ def executar_pergunta(pergunta, sqlite_path):
         st.info("Digite uma pergunta para a IA.")
         return
 
-    estrutura_df = carregar_estrutura(sqlite_path)
-    estrutura_contexto = ""
-    if estrutura_df is not None:
-        estrutura_contexto = "\n".join([
-            f"[{row['tabela']}] {row['coluna']} ({row['tipo']} | exemplo: {row['exemplo']}): {row['descricao']}"
-            for _, row in estrutura_df.iterrows()
-        ])
+    estrutura = get_estrutura_dinamica(sqlite_path)
+    estrutura_msg = ""
+    if estrutura is not None:
+        exemplos = []
+        for i, row in estrutura.iterrows():
+            exemplos.append(f"Tabela: {row['tabela']}, Coluna: {row['coluna']}, Descrição: {row['descricao']}, Tipo: {row['tipo']}, Exemplo: {row['exemplo']}")
+            if i > 30:
+                exemplos.append("...")
+                break
+        estrutura_msg = "\nExemplo da estrutura do banco:\n" + "\n".join(exemplos)
     else:
-        st.warning("Estrutura dinâmica não carregada. A resposta pode ser limitada.")
+        estrutura_msg = "\n(Estrutura dinâmica não carregada. A resposta pode ser limitada.)"
+
+    # Mensagem para IA, orientando a pedir detalhamento se necessário
+    system_content = (
+        "Você é um assistente de BI. "
+        "Responda perguntas de negócio analisando dados de um banco relacional conforme estrutura abaixo. "
+        "Nunca peça ao usuário a estrutura das tabelas; use apenas o que está na estrutura dinâmica (exemplo abaixo). "
+        "Quando o usuário perguntar, verifique se precisa perguntar algo (ex: se quer um resultado analítico ou sintético) antes de responder. "
+        "Ao responder, gere a análise ideal em texto, em tabela ou gráfico — sem mostrar SQL. "
+        "Se não encontrar dados, avise que não foi possível localizar o dado solicitado. "
+        "Se a estrutura não for suficiente, tente deduzir pelas descrições. "
+        + estrutura_msg
+    )
 
     messages = [
-        {"role": "system", "content":
-            f"""
-            Você é um assistente de BI para empresas. Abaixo está a estrutura do banco, use-a para responder perguntas consultando os dados conforme necessário.
-            Estrutura:
-            {estrutura_contexto}
-            Ao gerar a resposta, sempre mostre os resultados da consulta de forma amigável ao gestor, com tabelas, cartões ou gráficos, nunca apenas o SQL. Pergunte ao usuário se prefere análise sintética (resumida) ou analítica (detalhada) se a pergunta for ambígua.
-            """},
+        {"role": "system", "content": system_content},
         {"role": "user", "content": pergunta},
     ]
 
@@ -48,8 +63,8 @@ def executar_pergunta(pergunta, sqlite_path):
     body = {
         "model": MODEL,
         "messages": messages,
-        "max_tokens": 1200,
-        "temperature": 0.15
+        "max_tokens": 900,
+        "temperature": 0.1
     }
     try:
         response = requests.post(OPENROUTER_API_URL, headers=headers, json=body, timeout=60)

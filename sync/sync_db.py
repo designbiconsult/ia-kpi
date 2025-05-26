@@ -1,70 +1,83 @@
 import os
-import sqlite3
 import pandas as pd
+import sqlite3
 from sqlalchemy import create_engine, inspect
+import streamlit as st
 
-def mapear_estrutura_banco(mysql_host, mysql_port, mysql_user, mysql_password, mysql_database):
-    try:
-        mysql_uri = f"mysql+pymysql://{mysql_user}:{mysql_password}@{mysql_host}:{mysql_port}/{mysql_database}?charset=utf8"
-        mysql_engine = create_engine(mysql_uri)
-        inspector = inspect(mysql_engine)
-
-        # Conecta ao SQLite local
-        sqlite_path = "data/database.db"
-        conn_sqlite = sqlite3.connect(sqlite_path)
-        cursor = conn_sqlite.cursor()
-
-        # Cria a tabela de estrutura se não existir
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS estrutura_dinamica (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tabela TEXT,
-                coluna TEXT,
-                tipo TEXT,
-                exemplo TEXT,
-                descricao TEXT
-            )
-        ''')
-        conn_sqlite.commit()
-
-        tabelas = inspector.get_table_names(schema=mysql_database)
-        views = inspector.get_view_names(schema=mysql_database)
-        todas = tabelas + views
-
-        for tabela in todas:
-            colunas = inspector.get_columns(tabela, schema=mysql_database)
-            for col in colunas:
-                nome_coluna = col["name"]
-                tipo_dado = str(col["type"])
-                # Exemplo de valor
-                exemplo_valor = ""
-                try:
-                    df_exemplo = pd.read_sql(f"SELECT `{nome_coluna}` FROM `{mysql_database}`.`{tabela}` WHERE `{nome_coluna}` IS NOT NULL LIMIT 1", mysql_engine)
-                    if not df_exemplo.empty:
-                        exemplo_valor = str(df_exemplo.iloc[0][0])
-                except:
-                    exemplo_valor = ""
-
-                # Descrição gerada LOCALMENTE (sem IA!)
-                descricao = f"Coluna '{nome_coluna}' da tabela '{tabela}'. Tipo: {tipo_dado}. Exemplo: {exemplo_valor}"
-
-                # Insere na estrutura_dinamica
-                cursor.execute("""
-                    INSERT INTO estrutura_dinamica (tabela, coluna, tipo, exemplo, descricao)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (tabela, nome_coluna, tipo_dado, exemplo_valor, descricao))
-        conn_sqlite.commit()
-        conn_sqlite.close()
-        print("✅ Estrutura mapeada com sucesso.")
-    except Exception as e:
-        print(f"❌ Erro ao mapear estrutura: {e}")
-
-def iniciar_mapeamento_via_streamlit():
-    import streamlit as st
+def sync_mysql_to_sqlite():
+    """
+    Sincroniza todas as views e tabelas do schema de um banco MySQL para um banco SQLite local,
+    usando as credenciais fornecidas pelo usuário via Streamlit.
+    """
     mysql_host = st.session_state.get("mysql_host")
     mysql_port = st.session_state.get("mysql_port")
     mysql_user = st.session_state.get("mysql_user")
     mysql_password = st.session_state.get("mysql_password")
     mysql_database = st.session_state.get("mysql_database")
+    output_sqlite_path = st.session_state.get("sqlite_path", "data/cliente_dados.db")
 
-    mapear_estrutura_banco(mysql_host, mysql_port, mysql_user, mysql_password, mysql_database)
+    if not all([mysql_host, mysql_port, mysql_user, mysql_password, mysql_database]):
+        st.error("Credenciais incompletas. Verifique a conexão antes de sincronizar.")
+        return
+
+    mysql_uri = f"mysql+pymysql://{mysql_user}:{mysql_password}@{mysql_host}:{mysql_port}/{mysql_database}?charset=utf8"
+    mysql_engine = create_engine(mysql_uri)
+    inspector = inspect(mysql_engine)
+
+    os.makedirs(os.path.dirname(output_sqlite_path), exist_ok=True)
+    with sqlite3.connect(output_sqlite_path, timeout=30) as sqlite_conn:
+        try:
+            views = inspector.get_view_names(schema=mysql_database)
+            tables = inspector.get_table_names(schema=mysql_database)
+            entidades = views + tables
+
+            for entidade in entidades:
+                try:
+                    df = pd.read_sql(f"SELECT * FROM `{mysql_database}`.`{entidade}`", mysql_engine)
+                    df.to_sql(entidade, con=sqlite_conn, if_exists="replace", index=False)
+                except Exception as e:
+                    st.warning(f"⚠️ Falha ao sincronizar {entidade}: {e}")
+
+            # Após sincronizar, salva a estrutura dinâmica
+            salvar_estrutura_dinamica(entidades, sqlite_conn)
+            st.success("✅ Sincronização concluída com sucesso.")
+
+        except Exception as e:
+            st.error(f"❌ Erro ao sincronizar: {e}")
+        finally:
+            mysql_engine.dispose()
+
+def salvar_estrutura_dinamica(tabelas, conn_sqlite):
+    """
+    Cria e preenche a tabela estrutura_dinamica com as tabelas e colunas do SQLite.
+    """
+    cursor = conn_sqlite.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS estrutura_dinamica (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tabela TEXT,
+            coluna TEXT,
+            tipo TEXT,
+            exemplo TEXT,
+            descricao TEXT
+        )
+    ''')
+    conn_sqlite.commit()
+
+    for tabela in tabelas:
+        try:
+            df = pd.read_sql(f"SELECT * FROM {tabela} LIMIT 1", conn_sqlite)
+            for coluna in df.columns:
+                exemplo = str(df[coluna].iloc[0]) if not df.empty else ""
+                tipo = str(df[coluna].dtype)
+                # Descrição automática sem IA!
+                descricao = f"Coluna '{coluna}' da tabela '{tabela}'. Tipo: {tipo}. Exemplo: {exemplo}"
+                cursor.execute('''
+                    INSERT INTO estrutura_dinamica (tabela, coluna, tipo, exemplo, descricao)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (tabela, coluna, tipo, exemplo, descricao))
+        except Exception as e:
+            print(f"Erro ao processar tabela {tabela}: {e}")
+
+    conn_sqlite.commit()
+    cursor.close()
