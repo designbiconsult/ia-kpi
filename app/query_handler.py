@@ -63,7 +63,7 @@ def executar_pergunta(pergunta, sqlite_path):
     body = {
         "model": MODEL,
         "messages": messages,
-        "max_tokens": 900,
+        "max_tokens": 5000,
         "temperature": 0.1
     }
     try:
