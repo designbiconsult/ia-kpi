@@ -3,6 +3,29 @@ import pandas as pd
 import sqlite3
 from sqlalchemy import create_engine, inspect
 import streamlit as st
+import requests
+
+def obter_descricao_coluna(nome_tabela, nome_coluna, tipo_coluna, exemplo):
+    # Use a IA para descrever automaticamente a função da coluna
+    prompt = (
+        f"Explique resumidamente para um analista de BI o que representa a coluna '{nome_coluna}' (tipo: {tipo_coluna}, exemplo: {exemplo}) na tabela '{nome_tabela}'."
+        " Seja claro e objetivo, considerando contexto de ERP/indústria."
+    )
+    try:
+        api_key = st.secrets.get("OPENROUTER_API_KEY")
+        model = "meta-llama/llama-3.3-70b-instruct:free"
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        messages = [{"role": "user", "content": prompt}]
+        body = {"model": model, "messages": messages, "max_tokens": 80, "temperature": 0}
+        resp = requests.post(url, headers=headers, json=body, timeout=30)
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip()
+    except Exception:
+        return f"Coluna '{nome_coluna}' da tabela '{nome_tabela}', tipo {tipo_coluna}"
 
 def sync_mysql_to_sqlite():
     mysql_host = st.session_state.get("mysql_host")
@@ -33,7 +56,6 @@ def sync_mysql_to_sqlite():
 
             salvar_estrutura_dinamica(entidades, sqlite_conn)
             st.success("✅ Sincronização concluída com sucesso.")
-
         except Exception as e:
             st.error(f"❌ Erro ao sincronizar: {e}")
         finally:
@@ -59,7 +81,7 @@ def salvar_estrutura_dinamica(tabelas, conn_sqlite):
             for coluna in df.columns:
                 exemplo = str(df[coluna].iloc[0]) if not df.empty else ""
                 tipo = str(df[coluna].dtype)
-                descricao = f"Coluna da tabela {tabela} chamada {coluna}, tipo {tipo}"
+                descricao = obter_descricao_coluna(tabela, coluna, tipo, exemplo)
                 cursor.execute('''
                     INSERT INTO estrutura_dinamica (tabela, coluna, tipo, exemplo, descricao)
                     VALUES (?, ?, ?, ?, ?)

@@ -4,7 +4,7 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
-from app.query_handler import perguntar_ia_com_sql
+from app.query_handler import executar_pergunta
 from sync.sync_db import sync_mysql_to_sqlite
 
 DB_PATH = "data/database.db"
@@ -12,7 +12,6 @@ os.makedirs("data", exist_ok=True)
 
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
-# Criação da tabela de usuários
 with sqlite3.connect(DB_PATH, timeout=10) as conn:
     c = conn.cursor()
     c.execute('''
@@ -325,4 +324,4 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
             pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
             submitted = st.form_submit_button("🧠 Consultar IA")
             if submitted and pergunta.strip():
-                perguntar_ia_com_sql(pergunta, sqlite_path)
+                executar_pergunta(pergunta, sqlite_path)
