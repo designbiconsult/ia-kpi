@@ -26,11 +26,14 @@ def sync_mysql_to_sqlite():
             views = inspector.get_view_names(schema=mysql_database)
             tables = inspector.get_table_names(schema=mysql_database)
             entidades = views + tables
+
             for entidade in entidades:
                 df = pd.read_sql(f"SELECT * FROM `{mysql_database}`.`{entidade}`", mysql_engine)
                 df.to_sql(entidade, con=sqlite_conn, if_exists="replace", index=False)
+
             salvar_estrutura_dinamica(entidades, sqlite_conn)
             st.success("✅ Sincronização concluída com sucesso.")
+
         except Exception as e:
             st.error(f"❌ Erro ao sincronizar: {e}")
         finally:
@@ -49,6 +52,7 @@ def salvar_estrutura_dinamica(tabelas, conn_sqlite):
         )
     ''')
     conn_sqlite.commit()
+
     for tabela in tabelas:
         try:
             df = pd.read_sql(f"SELECT * FROM {tabela} LIMIT 1", conn_sqlite)
@@ -60,7 +64,8 @@ def salvar_estrutura_dinamica(tabelas, conn_sqlite):
                     INSERT INTO estrutura_dinamica (tabela, coluna, tipo, exemplo, descricao)
                     VALUES (?, ?, ?, ?, ?)
                 ''', (tabela, coluna, tipo, exemplo, descricao))
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Erro ao processar tabela {tabela}: {e}")
+
     conn_sqlite.commit()
     cursor.close()

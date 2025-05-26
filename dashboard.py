@@ -12,6 +12,7 @@ os.makedirs("data", exist_ok=True)
 
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
+# Criação da tabela de usuários
 with sqlite3.connect(DB_PATH, timeout=10) as conn:
     c = conn.cursor()
     c.execute('''
@@ -64,6 +65,7 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
                 """, conn)["total"][0] or 0
             except:
                 total_modelos = 0
+
             try:
                 qtd_produzida = pd.read_sql(f"""
                     SELECT SUM(QTD_MOVIMENTACAO) as total
@@ -73,6 +75,7 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
                 """, conn)["total"][0] or 0
             except:
                 qtd_produzida = 0
+
             try:
                 produto_top = pd.read_sql(f"""
                     SELECT PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
@@ -89,6 +92,7 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
             except:
                 nome_produto = "Nenhum"
                 qtd_produto = 0
+
             try:
                 grafico_df = pd.read_sql(f"""
                     SELECT strftime('%Y-%m', DATA_MOVIMENTACAO) as mes, SUM(QTD_MOVIMENTACAO) as total
@@ -117,6 +121,7 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
             st.pyplot(fig)
         else:
             st.info("Não há dados para o período.")
+
     except Exception as e:
         st.error(f"❌ Erro ao carregar indicadores: {e}")
 
