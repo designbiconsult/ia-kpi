@@ -7,7 +7,7 @@ import pandas as pd
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "")
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "mistralai/mistral-small-3.1-24b-instruct:free"  # Modelo gratuito
+MODEL = "google/gemma-3-27b-it:free"  # Modelo gratuito
 
 def get_estrutura_dinamica(sqlite_path):
     """Busca estrutura dinâmica se existir"""
