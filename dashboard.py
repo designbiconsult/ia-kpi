@@ -12,6 +12,7 @@ os.makedirs("data", exist_ok=True)
 
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
+# Criação da tabela de usuários
 with sqlite3.connect(DB_PATH, timeout=10) as conn:
     c = conn.cursor()
     c.execute('''
@@ -120,6 +121,7 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
             st.pyplot(fig)
         else:
             st.info("Não há dados para o período.")
+
     except Exception as e:
         st.error(f"❌ Erro ao carregar indicadores: {e}")
 
@@ -254,7 +256,6 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
 
-    # Sincronismo só na primeira entrada do dashboard ou via botão
     if not usuario["host"]:
         st.warning("Configure a conexão com o banco de dados para continuar. (Menu lateral)")
     else:
@@ -264,6 +265,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         ultimo_sync_str = usuario.get("ultimo_sync")
         precisa_sync = False
 
+        # Sincronismo só na primeira entrada do dashboard ou via botão
         if not st.session_state.get("ja_sincronizou", False):
             if not ultimo_sync_str:
                 precisa_sync = True
@@ -307,25 +309,6 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                     st.sidebar.error("❌ Banco local SQLite não encontrado.")
         except Exception as e:
             st.sidebar.error(f"Erro ao acessar banco local: {e}")
-
-        # ========================= VISUALIZAÇÃO DE TABELAS DO CLIENTE =========================
-        st.markdown("---")
-        st.subheader("🔍 Consulta de Dados do Cliente")
-
-        try:
-            with sqlite3.connect(sqlite_path) as conn_viz:
-                tabelas = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", conn_viz)
-                tabela_sel = st.selectbox("Selecione uma tabela para visualizar:", tabelas["name"], key="tabela_consulta")
-
-                if tabela_sel:
-                    colunas = pd.read_sql(f"PRAGMA table_info({tabela_sel})", conn_viz)
-                    st.write("**Estrutura da tabela:**")
-                    st.dataframe(colunas)
-                    dados = pd.read_sql(f"SELECT * FROM {tabela_sel} LIMIT 100", conn_viz)
-                    st.write("**Primeiras 100 linhas:**")
-                    st.dataframe(dados)
-        except Exception as e:
-            st.warning(f"Erro ao carregar dados para visualização: {e}")
 
         # Filtro de datas para indicadores
         st.subheader("Selecione o período para indicadores de produção")
