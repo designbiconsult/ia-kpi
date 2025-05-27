@@ -120,7 +120,6 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
             st.pyplot(fig)
         else:
             st.info("Não há dados para o período.")
-
     except Exception as e:
         st.error(f"❌ Erro ao carregar indicadores: {e}")
 
@@ -255,6 +254,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
 
+    # Sincronismo só na primeira entrada do dashboard ou via botão
     if not usuario["host"]:
         st.warning("Configure a conexão com o banco de dados para continuar. (Menu lateral)")
     else:
@@ -264,11 +264,27 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         ultimo_sync_str = usuario.get("ultimo_sync")
         precisa_sync = False
 
-        # O sincronismo SÓ ocorre:
-        # 1. Quando salvar as credenciais (feito acima)
-        # 2. Ao clicar manualmente no botão (feito abaixo)
-        # 3. Quando rodar o agendador de sincronismo (implementação futura)
-        # JAMAIS ao logar, abrir dashboard, ou perguntar à IA!
+        if not st.session_state.get("ja_sincronizou", False):
+            if not ultimo_sync_str:
+                precisa_sync = True
+            else:
+                try:
+                    dt_ultimo = datetime.fromisoformat(ultimo_sync_str)
+                    if datetime.now() > dt_ultimo + timedelta(minutes=int(intervalo_sync)):
+                        precisa_sync = True
+                except Exception:
+                    precisa_sync = True
+
+            if precisa_sync:
+                with st.spinner("Sincronizando dados do banco..."):
+                    sync_mysql_to_sqlite()
+                    novo_sync = datetime.now().isoformat()
+                    atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
+                    st.session_state["usuario"]["ultimo_sync"] = novo_sync
+                    st.success("Dados atualizados automaticamente!")
+            else:
+                st.info(f"Última sincronização: {ultimo_sync_str}")
+            st.session_state["ja_sincronizou"] = True
 
         # Botão manual de sincronismo
         if st.button("🔄 Sincronizar agora"):
@@ -291,6 +307,25 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                     st.sidebar.error("❌ Banco local SQLite não encontrado.")
         except Exception as e:
             st.sidebar.error(f"Erro ao acessar banco local: {e}")
+
+        # ========================= VISUALIZAÇÃO DE TABELAS DO CLIENTE =========================
+        st.markdown("---")
+        st.subheader("🔍 Consulta de Dados do Cliente")
+
+        try:
+            with sqlite3.connect(sqlite_path) as conn_viz:
+                tabelas = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", conn_viz)
+                tabela_sel = st.selectbox("Selecione uma tabela para visualizar:", tabelas["name"], key="tabela_consulta")
+
+                if tabela_sel:
+                    colunas = pd.read_sql(f"PRAGMA table_info({tabela_sel})", conn_viz)
+                    st.write("**Estrutura da tabela:**")
+                    st.dataframe(colunas)
+                    dados = pd.read_sql(f"SELECT * FROM {tabela_sel} LIMIT 100", conn_viz)
+                    st.write("**Primeiras 100 linhas:**")
+                    st.dataframe(dados)
+        except Exception as e:
+            st.warning(f"Erro ao carregar dados para visualização: {e}")
 
         # Filtro de datas para indicadores
         st.subheader("Selecione o período para indicadores de produção")
