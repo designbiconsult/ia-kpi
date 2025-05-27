@@ -12,7 +12,6 @@ os.makedirs("data", exist_ok=True)
 
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
-# Criação da tabela de usuários
 with sqlite3.connect(DB_PATH, timeout=10) as conn:
     c = conn.cursor()
     c.execute('''
@@ -173,6 +172,7 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
 
     st.markdown("---")
     st.markdown("Ainda não possui cadastro?")
+
     if st.button("👉 Cadastre-se aqui"):
         st.session_state["pagina"] = "cadastro"
         st.rerun()
@@ -190,16 +190,24 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
             if not (nome and email and senha):
                 st.error("Preencha todos os campos.")
             else:
-                with sqlite3.connect(DB_PATH, timeout=10) as conn:
-                    c = conn.cursor()
-                    c.execute(
-                        "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
-                        (nome, email, senha)
-                    )
-                    conn.commit()
-                st.success("Cadastro realizado com sucesso! Faça login para continuar.")
-                st.session_state["pagina"] = "login"
-                st.rerun()
+                try:
+                    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                        c = conn.cursor()
+                        c.execute(
+                            "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
+                            (nome, email, senha)
+                        )
+                        conn.commit()
+                    st.success("Cadastro realizado com sucesso! Faça login para continuar.")
+                    st.session_state["pagina"] = "login"
+                    st.rerun()
+                except sqlite3.IntegrityError:
+                    st.error("Já existe um usuário cadastrado com este e-mail. Por favor, use outro e-mail.")
+
+    # Botão de voltar para login
+    if st.button("⬅️ Voltar para Login"):
+        st.session_state["pagina"] = "login"
+        st.rerun()
 
 # =============== CONEXÃO BANCO ===============
 elif st.session_state.get("pagina") == "conexao":
@@ -256,6 +264,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
 
+    # Sincronismo só na primeira entrada do dashboard ou via botão
     if not usuario["host"]:
         st.warning("Configure a conexão com o banco de dados para continuar. (Menu lateral)")
     else:
@@ -265,7 +274,6 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         ultimo_sync_str = usuario.get("ultimo_sync")
         precisa_sync = False
 
-        # Sincronismo só na primeira entrada do dashboard ou via botão
         if not st.session_state.get("ja_sincronizou", False):
             if not ultimo_sync_str:
                 precisa_sync = True
@@ -320,7 +328,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         else:
             carregar_indicadores(sqlite_path, data_inicio, data_fim)
 
-        # Entrada IA (NUNCA chama sincronismo aqui!)
+        # Entrada IA (JAMAIS chama sincronismo aqui!)
         with st.form("pergunta_form"):
             pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
             submitted = st.form_submit_button("🧠 Consultar IA")
