@@ -255,7 +255,6 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
 
-    # Sincronismo só na primeira entrada do dashboard ou via botão
     if not usuario["host"]:
         st.warning("Configure a conexão com o banco de dados para continuar. (Menu lateral)")
     else:
@@ -265,27 +264,11 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         ultimo_sync_str = usuario.get("ultimo_sync")
         precisa_sync = False
 
-        if not st.session_state.get("ja_sincronizou", False):
-            if not ultimo_sync_str:
-                precisa_sync = True
-            else:
-                try:
-                    dt_ultimo = datetime.fromisoformat(ultimo_sync_str)
-                    if datetime.now() > dt_ultimo + timedelta(minutes=int(intervalo_sync)):
-                        precisa_sync = True
-                except Exception:
-                    precisa_sync = True
-
-            if precisa_sync:
-                with st.spinner("Sincronizando dados do banco..."):
-                    sync_mysql_to_sqlite()
-                    novo_sync = datetime.now().isoformat()
-                    atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
-                    st.session_state["usuario"]["ultimo_sync"] = novo_sync
-                    st.success("Dados atualizados automaticamente!")
-            else:
-                st.info(f"Última sincronização: {ultimo_sync_str}")
-            st.session_state["ja_sincronizou"] = True
+        # O sincronismo SÓ ocorre:
+        # 1. Quando salvar as credenciais (feito acima)
+        # 2. Ao clicar manualmente no botão (feito abaixo)
+        # 3. Quando rodar o agendador de sincronismo (implementação futura)
+        # JAMAIS ao logar, abrir dashboard, ou perguntar à IA!
 
         # Botão manual de sincronismo
         if st.button("🔄 Sincronizar agora"):
