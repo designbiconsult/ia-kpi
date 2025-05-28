@@ -4,8 +4,8 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
-# from app.query_handler import executar_pergunta  # Se quiser IA local, descomente a linha correta do handler
-# from sync.sync_db import sync_mysql_to_sqlite    # Se quiser sincronizar, ajuste a função abaixo
+from app.query_handler import executar_pergunta
+from sync.sync_db import sync_mysql_to_sqlite
 
 DB_PATH = "data/database.db"
 os.makedirs("data", exist_ok=True)
@@ -52,78 +52,77 @@ def atualizar_usuario_campo(id_usuario, campo, valor):
         conn.commit()
 
 def carregar_indicadores(sqlite_path, data_inicio, data_fim):
-    # SEMPRE mostra os indicadores, mesmo sem dados
-    total_modelos, qtd_produzida, nome_produto, qtd_produto = 0, 0, "Nenhum", 0
-    grafico_df = pd.DataFrame({"mes":[], "total":[]})
-
     try:
-        if os.path.exists(sqlite_path):
-            with sqlite3.connect(sqlite_path, timeout=10) as conn:
-                try:
-                    total_modelos = pd.read_sql(f"""
-                        SELECT COUNT(DISTINCT PROD.REFERENCIA_PRODUTO) AS total
-                        FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
-                        JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
-                        WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
-                          AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                    """, conn)["total"][0] or 0
-                except:
-                    total_modelos = 0
-                try:
-                    qtd_produzida = pd.read_sql(f"""
-                        SELECT SUM(QTD_MOVIMENTACAO) as total
-                        FROM VW_CTO_ORDEM_PRODUCAO_ITEM
-                        WHERE TIPO_MOVIMENTACAO = 'Produzida'
-                          AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                    """, conn)["total"][0] or 0
-                except:
-                    qtd_produzida = 0
-                try:
-                    produto_top = pd.read_sql(f"""
-                        SELECT PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
-                        FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
-                        JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
-                        WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
-                          AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                        GROUP BY PROD.DESCRICAO_PRODUTO
-                        ORDER BY total DESC
-                        LIMIT 1
-                    """, conn)
-                    nome_produto = produto_top["DESCRICAO_PRODUTO"][0] if not produto_top.empty else "Nenhum"
-                    qtd_produto = produto_top["total"][0] if not produto_top.empty else 0
-                except:
-                    nome_produto = "Nenhum"
-                    qtd_produto = 0
-                try:
-                    grafico_df = pd.read_sql(f"""
-                        SELECT strftime('%Y-%m', DATA_MOVIMENTACAO) as mes, SUM(QTD_MOVIMENTACAO) as total
-                        FROM VW_CTO_ORDEM_PRODUCAO_ITEM
-                        WHERE TIPO_MOVIMENTACAO = 'Produzida'
-                          AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                        GROUP BY mes
-                        ORDER BY mes
-                    """, conn)
-                except:
-                    grafico_df = pd.DataFrame({"mes":[], "total":[]})
+        with sqlite3.connect(sqlite_path, timeout=10) as conn:
+            try:
+                total_modelos = pd.read_sql(f"""
+                    SELECT COUNT(DISTINCT PROD.REFERENCIA_PRODUTO) AS total
+                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
+                    JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
+                    WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
+                      AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+                """, conn)["total"][0] or 0
+            except:
+                total_modelos = 0
+
+            try:
+                qtd_produzida = pd.read_sql(f"""
+                    SELECT SUM(QTD_MOVIMENTACAO) as total
+                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM
+                    WHERE TIPO_MOVIMENTACAO = 'Produzida'
+                      AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+                """, conn)["total"][0] or 0
+            except:
+                qtd_produzida = 0
+
+            try:
+                produto_top = pd.read_sql(f"""
+                    SELECT PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
+                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
+                    JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
+                    WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
+                      AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+                    GROUP BY PROD.DESCRICAO_PRODUTO
+                    ORDER BY total DESC
+                    LIMIT 1
+                """, conn)
+                nome_produto = produto_top["DESCRICAO_PRODUTO"][0] if not produto_top.empty else "Nenhum"
+                qtd_produto = produto_top["total"][0] if not produto_top.empty else 0
+            except:
+                nome_produto = "Nenhum"
+                qtd_produto = 0
+
+            try:
+                grafico_df = pd.read_sql(f"""
+                    SELECT strftime('%Y-%m', DATA_MOVIMENTACAO) as mes, SUM(QTD_MOVIMENTACAO) as total
+                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM
+                    WHERE TIPO_MOVIMENTACAO = 'Produzida'
+                      AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+                    GROUP BY mes
+                    ORDER BY mes
+                """, conn)
+            except:
+                grafico_df = pd.DataFrame({"mes":[], "total":[]})
+
+        st.subheader("📊 Indicadores de Produção")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Modelos produzidos", total_modelos)
+        col2.metric("Total produzido", int(qtd_produzida))
+        col3.metric("Mais produzido", f"{nome_produto} ({int(qtd_produto)})")
+
+        st.subheader("📈 Produção por mês no período")
+        if not grafico_df.empty:
+            fig, ax = plt.subplots()
+            ax.bar(grafico_df["mes"], grafico_df["total"])
+            ax.set_ylabel("Qtd Produzida")
+            ax.set_xlabel("Mês")
+            ax.set_title("Produção Mensal")
+            st.pyplot(fig)
+        else:
+            st.info("Não há dados para o período.")
+
     except Exception as e:
         st.error(f"❌ Erro ao carregar indicadores: {e}")
-
-    st.subheader("📊 Indicadores de Produção")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Modelos produzidos", total_modelos)
-    col2.metric("Total produzido", int(qtd_produzida))
-    col3.metric("Mais produzido", f"{nome_produto} ({int(qtd_produto)})")
-
-    st.subheader("📈 Produção por mês no período")
-    if not grafico_df.empty:
-        fig, ax = plt.subplots()
-        ax.bar(grafico_df["mes"], grafico_df["total"])
-        ax.set_ylabel("Qtd Produzida")
-        ax.set_xlabel("Mês")
-        ax.set_title("Produção Mensal")
-        st.pyplot(fig)
-    else:
-        st.info("Não há dados para o período.")
 
 # =============== SIDEBAR UNIVERSAL ===============
 if st.session_state.get("logado"):
@@ -190,21 +189,17 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
             if not (nome and email and senha):
                 st.error("Preencha todos os campos.")
             else:
-                try:
-                    with sqlite3.connect(DB_PATH, timeout=10) as conn:
-                        c = conn.cursor()
-                        c.execute(
-                            "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
-                            (nome, email, senha)
-                        )
-                        conn.commit()
-                    st.success("Cadastro realizado com sucesso! Faça login para continuar.")
-                    st.session_state["pagina"] = "login"
-                    st.rerun()
-                except sqlite3.IntegrityError:
-                    st.error("Este email já está cadastrado.")
-
-    if st.button("⬅️ Voltar para Login"):
+                with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                    c = conn.cursor()
+                    c.execute(
+                        "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
+                        (nome, email, senha)
+                    )
+                    conn.commit()
+                st.success("Cadastro realizado com sucesso! Faça login para continuar.")
+                st.session_state["pagina"] = "login"
+                st.rerun()
+    if st.button("⬅️ Voltar para login"):
         st.session_state["pagina"] = "login"
         st.rerun()
 
@@ -247,7 +242,6 @@ elif st.session_state.get("pagina") == "conexao":
             st.success("Conexão salva com sucesso!")
             st.session_state["pagina"] = "dashboard"
             st.rerun()
-
     if st.button("⬅️ Voltar para Dashboard"):
         st.session_state["pagina"] = "dashboard"
         st.rerun()
@@ -263,35 +257,73 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
 
-    id_usuario = usuario["id"]
-    sqlite_path = st.session_state["sqlite_path"]
+    if not usuario["host"]:
+        st.warning("Configure a conexão com o banco de dados para continuar. (Menu lateral)")
+    else:
+        id_usuario = usuario["id"]
+        sqlite_path = st.session_state["sqlite_path"]
+        intervalo_sync = usuario.get("intervalo_sync", 60)
+        ultimo_sync_str = usuario.get("ultimo_sync")
+        precisa_sync = False
 
-    # Diagnóstico: tabelas no SQLite (opcional, pode comentar se não quiser mostrar)
-    try:
-        if os.path.exists(sqlite_path):
+        if not st.session_state.get("ja_sincronizou", False):
+            if not ultimo_sync_str:
+                precisa_sync = True
+            else:
+                try:
+                    dt_ultimo = datetime.fromisoformat(ultimo_sync_str)
+                    if datetime.now() > dt_ultimo + timedelta(minutes=int(intervalo_sync)):
+                        precisa_sync = True
+                except Exception:
+                    precisa_sync = True
+
+            if precisa_sync:
+                with st.spinner("Sincronizando dados do banco..."):
+                    sync_mysql_to_sqlite()
+                    novo_sync = datetime.now().isoformat()
+                    atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
+                    st.session_state["usuario"]["ultimo_sync"] = novo_sync
+                    st.success("Dados atualizados automaticamente!")
+            else:
+                st.info(f"Última sincronização: {ultimo_sync_str}")
+            st.session_state["ja_sincronizou"] = True
+
+        # ==== BOTÃO SEMPRE VISÍVEL! ====
+        if usuario["host"]:
+            if st.button("🔄 Sincronizar agora"):
+                with st.spinner("Sincronizando dados do banco..."):
+                    sync_mysql_to_sqlite()
+                    novo_sync = datetime.now().isoformat()
+                    atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
+                    st.session_state["usuario"]["ultimo_sync"] = novo_sync
+                    st.success("Dados atualizados manualmente!")
+
+        # Diagnóstico: tabelas no SQLite
+        try:
             with sqlite3.connect(sqlite_path) as conn_debug:
                 tabelas = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", conn_debug)
                 st.sidebar.subheader("📚 Tabelas no banco local:")
                 st.sidebar.write(tabelas)
-                st.sidebar.success("📁 Banco sincronizado com sucesso!")
+                if os.path.exists(sqlite_path):
+                    st.sidebar.success("📁 Banco sincronizado com sucesso!")
+                else:
+                    st.sidebar.error("❌ Banco local SQLite não encontrado.")
+        except Exception as e:
+            st.sidebar.error(f"Erro ao acessar banco local: {e}")
+
+        # Filtro de datas para indicadores
+        st.subheader("Selecione o período para indicadores de produção")
+        hoje = datetime.now().date()
+        data_inicio = st.date_input("Data início", value=hoje.replace(day=1))
+        data_fim = st.date_input("Data fim", value=hoje)
+        if data_fim < data_inicio:
+            st.error("Data final deve ser igual ou posterior à data inicial.")
         else:
-            st.sidebar.error("❌ Banco local SQLite não encontrado.")
-    except Exception as e:
-        st.sidebar.error(f"Erro ao acessar banco local: {e}")
+            carregar_indicadores(sqlite_path, data_inicio, data_fim)
 
-    # Filtro de datas para indicadores
-    st.subheader("Selecione o período para indicadores de produção")
-    hoje = datetime.now().date()
-    data_inicio = st.date_input("Data início", value=hoje.replace(day=1))
-    data_fim = st.date_input("Data fim", value=hoje)
-    if data_fim < data_inicio:
-        st.error("Data final deve ser igual ou posterior à data inicial.")
-    else:
-        carregar_indicadores(sqlite_path, data_inicio, data_fim)
-
-    # Entrada IA — aqui é só um placeholder, adapte conforme seu handler local
-    # with st.form("pergunta_form"):
-    #     pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
-    #     submitted = st.form_submit_button("🧠 Consultar IA")
-    #     if submitted and pergunta.strip():
-    #         executar_pergunta(pergunta, sqlite_path)
+        # Entrada IA
+        with st.form("pergunta_form"):
+            pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
+            submitted = st.form_submit_button("🧠 Consultar IA")
+            if submitted and pergunta.strip():
+                executar_pergunta(pergunta, sqlite_path)
