@@ -1,9 +1,7 @@
 import requests
 import streamlit as st
 
-OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "SUA_KEY")
-OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+OLLAMA_URL = "http://localhost:11434/api/chat"
 
 def executar_pergunta(pergunta, sqlite_path):
     st.markdown("#### 🤖 Resposta da IA")
@@ -11,30 +9,31 @@ def executar_pergunta(pergunta, sqlite_path):
         st.info("Digite uma pergunta para a IA.")
         return
 
-    messages = [
-        {"role": "system", "content": (
-            "Você é um assistente inteligente para análise de indicadores de gestão empresarial. "
-            "Seja objetivo e forneça respostas claras com base nos dados disponíveis. "
-            "Se necessário, peça esclarecimentos ao usuário sobre o tipo de análise desejada (ex: sintética ou analítica)."
-        )},
-        {"role": "user", "content": pergunta},
-    ]
+    prompt = (
+        "Você é um assistente inteligente para análise de indicadores de gestão empresarial. "
+        "Responda sempre baseado nos dados do banco local. Peça ao usuário para escolher entre análise sintética (por referência/descrição) "
+        "ou analítica (por cor/tamanho) se a pergunta não estiver clara."
+        "\n\nPergunta: " + pergunta
+    )
 
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    body = {
-        "model": MODEL,
-        "messages": messages,
-        "max_tokens": 800,
-        "temperature": 0.2
-    }
     try:
-        response = requests.post(OPENROUTER_API_URL, headers=headers, json=body, timeout=45)
+        response = requests.post(
+            OLLAMA_URL,
+            json={
+                "model": "llama3",  # Ou outro modelo instalado localmente!
+                "messages": [
+                    {"role": "system", "content": "Você é um assistente de BI local."},
+                    {"role": "user", "content": prompt}
+                ],
+                "stream": False
+            },
+            timeout=45
+        )
         response.raise_for_status()
-        resposta = response.json()["choices"][0]["message"]["content"]
+        data = response.json()
+        # Ollama local responde: {"message": {"role": "...", "content": "..."}}
+        resposta = data["message"]["content"]
         st.success(resposta)
     except Exception as e:
-        st.error(f"Erro ao acessar o OpenRouter: {e}")
+        st.error(f"Erro ao acessar IA local: {e}")
         st.exception(e)
