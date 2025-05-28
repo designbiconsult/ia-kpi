@@ -5,7 +5,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 from app.query_handler import executar_pergunta
-from sync.sync_db import sync_mysql_to_sqlite
 
 DB_PATH = "data/database.db"
 os.makedirs("data", exist_ok=True)
@@ -22,7 +21,6 @@ def garantir_campos_novos():
             c.execute("ALTER TABLE usuarios ADD COLUMN ultimo_sync TEXT")
         conn.commit()
 garantir_campos_novos()
-# --- FIM DA MIGRAÇÃO ---
 
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
@@ -49,8 +47,6 @@ if "logado" not in st.session_state:
     st.session_state["logado"] = False
 if "pagina" not in st.session_state:
     st.session_state["pagina"] = "login"
-if "ja_sincronizou" not in st.session_state:
-    st.session_state["ja_sincronizou"] = False
 
 def autenticar(email, senha):
     with sqlite3.connect(DB_PATH, timeout=10) as conn:
@@ -59,83 +55,79 @@ def autenticar(email, senha):
         resultado = c.fetchone()
     return resultado
 
-def atualizar_usuario_campo(id_usuario, campo, valor):
-    with sqlite3.connect(DB_PATH, timeout=10) as conn:
-        c = conn.cursor()
-        c.execute(f"UPDATE usuarios SET {campo} = ? WHERE id = ?", (valor, id_usuario))
-        conn.commit()
-
 def carregar_indicadores(sqlite_path, data_inicio, data_fim):
-    try:
-        with sqlite3.connect(sqlite_path, timeout=10) as conn:
-            try:
-                total_modelos = pd.read_sql(f"""
-                    SELECT COUNT(DISTINCT PROD.REFERENCIA_PRODUTO) AS total
-                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
-                    JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
-                    WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
-                      AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                """, conn)["total"][0] or 0
-            except:
-                total_modelos = 0
+    # Função segura: sempre mostra os cards mesmo sem dados!
+    total_modelos, qtd_produzida, nome_produto, qtd_produto, grafico_df = 0, 0, "Nenhum", 0, pd.DataFrame({"mes":[],"total":[]})
 
-            try:
-                qtd_produzida = pd.read_sql(f"""
-                    SELECT SUM(QTD_MOVIMENTACAO) as total
-                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM
-                    WHERE TIPO_MOVIMENTACAO = 'Produzida'
-                      AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                """, conn)["total"][0] or 0
-            except:
-                qtd_produzida = 0
+    if sqlite_path and os.path.exists(sqlite_path):
+        try:
+            with sqlite3.connect(sqlite_path, timeout=10) as conn:
+                try:
+                    total_modelos = pd.read_sql(f"""
+                        SELECT COUNT(DISTINCT PROD.REFERENCIA_PRODUTO) AS total
+                        FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
+                        JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
+                        WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
+                          AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+                    """, conn)["total"][0] or 0
+                except: total_modelos = 0
 
-            try:
-                produto_top = pd.read_sql(f"""
-                    SELECT PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
-                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
-                    JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
-                    WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
-                      AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                    GROUP BY PROD.DESCRICAO_PRODUTO
-                    ORDER BY total DESC
-                    LIMIT 1
-                """, conn)
-                nome_produto = produto_top["DESCRICAO_PRODUTO"][0] if not produto_top.empty else "Nenhum"
-                qtd_produto = produto_top["total"][0] if not produto_top.empty else 0
-            except:
-                nome_produto = "Nenhum"
-                qtd_produto = 0
+                try:
+                    qtd_produzida = pd.read_sql(f"""
+                        SELECT SUM(QTD_MOVIMENTACAO) as total
+                        FROM VW_CTO_ORDEM_PRODUCAO_ITEM
+                        WHERE TIPO_MOVIMENTACAO = 'Produzida'
+                          AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+                    """, conn)["total"][0] or 0
+                except: qtd_produzida = 0
 
-            try:
-                grafico_df = pd.read_sql(f"""
-                    SELECT strftime('%Y-%m', DATA_MOVIMENTACAO) as mes, SUM(QTD_MOVIMENTACAO) as total
-                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM
-                    WHERE TIPO_MOVIMENTACAO = 'Produzida'
-                      AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                    GROUP BY mes
-                    ORDER BY mes
-                """, conn)
-            except:
-                grafico_df = pd.DataFrame({"mes":[], "total":[]})
+                try:
+                    produto_top = pd.read_sql(f"""
+                        SELECT PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
+                        FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
+                        JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
+                        WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
+                          AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+                        GROUP BY PROD.DESCRICAO_PRODUTO
+                        ORDER BY total DESC
+                        LIMIT 1
+                    """, conn)
+                    nome_produto = produto_top["DESCRICAO_PRODUTO"][0] if not produto_top.empty else "Nenhum"
+                    qtd_produto = produto_top["total"][0] if not produto_top.empty else 0
+                except:
+                    nome_produto = "Nenhum"
+                    qtd_produto = 0
 
-        st.subheader("📊 Indicadores de Produção")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Modelos produzidos", total_modelos)
-        col2.metric("Total produzido", int(qtd_produzida))
-        col3.metric("Mais produzido", f"{nome_produto} ({int(qtd_produto)})")
+                try:
+                    grafico_df = pd.read_sql(f"""
+                        SELECT strftime('%Y-%m', DATA_MOVIMENTACAO) as mes, SUM(QTD_MOVIMENTACAO) as total
+                        FROM VW_CTO_ORDEM_PRODUCAO_ITEM
+                        WHERE TIPO_MOVIMENTACAO = 'Produzida'
+                          AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
+                        GROUP BY mes
+                        ORDER BY mes
+                    """, conn)
+                except:
+                    grafico_df = pd.DataFrame({"mes":[], "total":[]})
+        except Exception as e:
+            pass # apenas mostra cards zerados
 
-        st.subheader("📈 Produção por mês no período")
-        if not grafico_df.empty:
-            fig, ax = plt.subplots()
-            ax.bar(grafico_df["mes"], grafico_df["total"])
-            ax.set_ylabel("Qtd Produzida")
-            ax.set_xlabel("Mês")
-            ax.set_title("Produção Mensal")
-            st.pyplot(fig)
-        else:
-            st.info("Não há dados para o período.")
-    except Exception as e:
-        st.error(f"❌ Erro ao carregar indicadores: {e}")
+    st.subheader("📊 Indicadores de Produção")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Modelos produzidos", total_modelos)
+    col2.metric("Total produzido", int(qtd_produzida))
+    col3.metric("Mais produzido", f"{nome_produto} ({int(qtd_produto)})")
+
+    st.subheader("📈 Produção por mês no período")
+    if not grafico_df.empty:
+        fig, ax = plt.subplots()
+        ax.bar(grafico_df["mes"], grafico_df["total"])
+        ax.set_ylabel("Qtd Produzida")
+        ax.set_xlabel("Mês")
+        ax.set_title("Produção Mensal")
+        st.pyplot(fig)
+    else:
+        st.info("Não há dados para o período.")
 
 # ===== SIDEBAR UNIVERSAL =====
 if st.session_state.get("logado"):
@@ -171,12 +163,6 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
                 "intervalo_sync": usuario[9] or 60,
                 "ultimo_sync": usuario[10]
             }
-            st.session_state["mysql_host"] = usuario[4]
-            st.session_state["mysql_port"] = usuario[5]
-            st.session_state["mysql_user"] = usuario[6]
-            st.session_state["mysql_password"] = usuario[7]
-            st.session_state["mysql_database"] = usuario[8]
-            st.session_state["sqlite_path"] = f"data/cliente_{usuario[0]}.db"
             st.session_state["pagina"] = "dashboard"
             st.session_state["ja_sincronizou"] = False
             st.rerun()
@@ -215,7 +201,6 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
                         st.rerun()
                     except sqlite3.IntegrityError:
                         st.error("Este email já está cadastrado.")
-        # Botão para voltar ao login
         if st.form_submit_button("⬅️ Voltar para Login"):
             st.session_state["pagina"] = "login"
             st.rerun()
@@ -249,15 +234,9 @@ elif st.session_state.get("pagina") == "conexao":
                 "schema": schema,
                 "intervalo_sync": intervalo_sync
             })
-            st.session_state["mysql_host"] = host
-            st.session_state["mysql_port"] = porta
-            st.session_state["mysql_user"] = usuario_banco
-            st.session_state["mysql_password"] = senha_banco
-            st.session_state["mysql_database"] = schema
-            st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
-            st.session_state["ja_sincronizou"] = False
             st.success("Conexão salva com sucesso!")
             st.session_state["pagina"] = "dashboard"
+            st.session_state["ja_sincronizou"] = False
             st.rerun()
 
     if st.button("⬅️ Voltar para Dashboard"):
@@ -267,80 +246,26 @@ elif st.session_state.get("pagina") == "conexao":
 # ===== DASHBOARD PRINCIPAL =====
 elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
+
     usuario = st.session_state["usuario"]
-    st.session_state["mysql_host"] = usuario["host"]
-    st.session_state["mysql_port"] = usuario["porta"]
-    st.session_state["mysql_user"] = usuario["usuario_banco"]
-    st.session_state["mysql_password"] = usuario["senha_banco"]
-    st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
+    sqlite_path = st.session_state["sqlite_path"]
 
-    if not usuario["host"]:
-        st.warning("Configure a conexão com o banco de dados para continuar. (Menu lateral)")
+    hoje = datetime.now().date()
+    data_inicio = st.date_input("Data início", value=hoje.replace(day=1))
+    data_fim = st.date_input("Data fim", value=hoje)
+    if data_fim < data_inicio:
+        st.error("Data final deve ser igual ou posterior à data inicial.")
     else:
-        id_usuario = usuario["id"]
-        sqlite_path = st.session_state["sqlite_path"]
-        intervalo_sync = usuario.get("intervalo_sync", 60)
-        ultimo_sync_str = usuario.get("ultimo_sync")
-        precisa_sync = False
+        carregar_indicadores(sqlite_path, data_inicio, data_fim)
 
-        if not st.session_state.get("ja_sincronizou", False):
-            if not ultimo_sync_str:
-                precisa_sync = True
-            else:
-                try:
-                    dt_ultimo = datetime.fromisoformat(ultimo_sync_str)
-                    if datetime.now() > dt_ultimo + timedelta(minutes=int(intervalo_sync)):
-                        precisa_sync = True
-                except Exception:
-                    precisa_sync = True
+    # Entrada IA
+    with st.form("pergunta_form"):
+        pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
+        submitted = st.form_submit_button("🧠 Consultar IA")
+        if submitted and pergunta.strip():
+            executar_pergunta(pergunta, sqlite_path)
 
-            if precisa_sync:
-                with st.spinner("Sincronizando dados do banco..."):
-                    sync_mysql_to_sqlite()
-                    novo_sync = datetime.now().isoformat()
-                    atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
-                    st.session_state["usuario"]["ultimo_sync"] = novo_sync
-                    st.success("Dados atualizados automaticamente!")
-            else:
-                st.info(f"Última sincronização: {ultimo_sync_str}")
-            st.session_state["ja_sincronizou"] = True
-
-        # Botão manual de sincronismo
-        if st.button("🔄 Sincronizar agora"):
-            with st.spinner("Sincronizando dados do banco..."):
-                sync_mysql_to_sqlite()
-                novo_sync = datetime.now().isoformat()
-                atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
-                st.session_state["usuario"]["ultimo_sync"] = novo_sync
-                st.success("Dados atualizados manualmente!")
-
-        # Diagnóstico: tabelas no SQLite
-        try:
-            with sqlite3.connect(sqlite_path) as conn_debug:
-                tabelas = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", conn_debug)
-                st.sidebar.subheader("📚 Tabelas no banco local:")
-                st.sidebar.write(tabelas)
-                if os.path.exists(sqlite_path):
-                    st.sidebar.success("📁 Banco sincronizado com sucesso!")
-                else:
-                    st.sidebar.error("❌ Banco local SQLite não encontrado.")
-        except Exception as e:
-            st.sidebar.error(f"Erro ao acessar banco local: {e}")
-
-        # Filtro de datas para indicadores
-        st.subheader("Selecione o período para indicadores de produção")
-        hoje = datetime.now().date()
-        data_inicio = st.date_input("Data início", value=hoje.replace(day=1))
-        data_fim = st.date_input("Data fim", value=hoje)
-        if data_fim < data_inicio:
-            st.error("Data final deve ser igual ou posterior à data inicial.")
-        else:
-            carregar_indicadores(sqlite_path, data_inicio, data_fim)
-
-        # Entrada IA (JAMAIS chama sincronismo aqui!)
-        with st.form("pergunta_form"):
-            pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
-            submitted = st.form_submit_button("🧠 Consultar IA")
-            if submitted and pergunta.strip():
-                executar_pergunta(pergunta, sqlite_path)
+    # Sugere configurar conexão se necessário
+    if not usuario.get("host"):
+        st.warning("Configure a conexão com o banco de dados para importar dados do seu ERP. (Menu lateral)")
