@@ -4,8 +4,8 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
+from sync.sync_db import sync_mysql_to_sqlite, listar_tabelas_mysql, atualizar_tabelas_sincronizadas
 from app.query_handler import executar_pergunta
-from sync.sync_db import sync_mysql_to_sqlite
 
 DB_PATH = "data/database.db"
 os.makedirs("data", exist_ok=True)
@@ -27,6 +27,16 @@ with sqlite3.connect(DB_PATH, timeout=10) as conn:
             schema TEXT,
             intervalo_sync INTEGER DEFAULT 60,
             ultimo_sync TEXT
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS tabelas_sincronizadas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER,
+            nome_tabela TEXT NOT NULL,
+            tipo TEXT,
+            ultima_sync DATETIME,
+            UNIQUE(usuario_id, nome_tabela)
         )
     ''')
     conn.commit()
@@ -131,6 +141,9 @@ if st.session_state.get("logado"):
         if st.button("⚙️ Configurar conexão"):
             st.session_state["pagina"] = "conexao"
             st.rerun()
+        if st.button("🗂️ Gerenciar tabelas sincronizadas"):
+            st.session_state["pagina"] = "tabelas"
+            st.rerun()
         if st.button("Sair"):
             st.session_state["logado"] = False
             st.session_state["pagina"] = "login"
@@ -199,11 +212,11 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
                 st.success("Cadastro realizado com sucesso! Faça login para continuar.")
                 st.session_state["pagina"] = "login"
                 st.rerun()
-    if st.button("⬅️ Voltar para login"):
+    if st.button("⬅️ Voltar para Login"):
         st.session_state["pagina"] = "login"
         st.rerun()
 
-# =============== CONEXÃO BANCO ===============
+# =============== CONFIGURAÇÃO DA CONEXÃO BANCO ===============
 elif st.session_state.get("pagina") == "conexao":
     st.title("⚙️ Configuração da conexão com o banco")
     usuario = st.session_state["usuario"]
@@ -239,9 +252,34 @@ elif st.session_state.get("pagina") == "conexao":
             st.session_state["mysql_database"] = schema
             st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
             st.session_state["ja_sincronizou"] = False
-            st.success("Conexão salva com sucesso!")
-            st.session_state["pagina"] = "dashboard"
+            st.session_state["pagina"] = "tabelas"
+            st.success("Conexão salva com sucesso! Agora selecione as tabelas/views para sincronizar.")
             st.rerun()
+
+    if st.button("⬅️ Voltar para Dashboard"):
+        st.session_state["pagina"] = "dashboard"
+        st.rerun()
+
+# =============== SELEÇÃO DE TABELAS PARA SINCRONISMO ===============
+elif st.session_state.get("pagina") == "tabelas":
+    st.title("🗂️ Selecione as tabelas/views para sincronizar")
+    usuario = st.session_state["usuario"]
+    st.info("Só serão sincronizadas as tabelas/views selecionadas aqui!")
+    if st.button("🔄 Carregar/Atualizar lista"):
+        tabelas, tipos = listar_tabelas_mysql()
+        st.session_state["tabelas_mysql"], st.session_state["tipos_mysql"] = tabelas, tipos
+
+    tabelas_mysql = st.session_state.get("tabelas_mysql", [])
+    tipos_mysql = st.session_state.get("tipos_mysql", [])
+
+    if tabelas_mysql:
+        selecionadas = st.multiselect("Escolha as tabelas/views", tabelas_mysql)
+        if st.button("Salvar seleção"):
+            atualizar_tabelas_sincronizadas(usuario["id"], selecionadas, tipos_mysql)
+            st.success("Tabelas/views salvas com sucesso!")
+    else:
+        st.warning("Clique em 'Carregar/Atualizar lista' para buscar as tabelas/views do banco do cliente.")
+
     if st.button("⬅️ Voltar para Dashboard"):
         st.session_state["pagina"] = "dashboard"
         st.rerun()
@@ -257,46 +295,25 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
 
+    # Sincronismo só via botão agora
     if not usuario["host"]:
         st.warning("Configure a conexão com o banco de dados para continuar. (Menu lateral)")
     else:
         id_usuario = usuario["id"]
         sqlite_path = st.session_state["sqlite_path"]
-        intervalo_sync = usuario.get("intervalo_sync", 60)
-        ultimo_sync_str = usuario.get("ultimo_sync")
-        precisa_sync = False
 
-        if not st.session_state.get("ja_sincronizou", False):
-            if not ultimo_sync_str:
-                precisa_sync = True
-            else:
-                try:
-                    dt_ultimo = datetime.fromisoformat(ultimo_sync_str)
-                    if datetime.now() > dt_ultimo + timedelta(minutes=int(intervalo_sync)):
-                        precisa_sync = True
-                except Exception:
-                    precisa_sync = True
-
-            if precisa_sync:
-                with st.spinner("Sincronizando dados do banco..."):
-                    sync_mysql_to_sqlite()
-                    novo_sync = datetime.now().isoformat()
-                    atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
-                    st.session_state["usuario"]["ultimo_sync"] = novo_sync
-                    st.success("Dados atualizados automaticamente!")
-            else:
-                st.info(f"Última sincronização: {ultimo_sync_str}")
-            st.session_state["ja_sincronizou"] = True
-
-        # ==== BOTÃO SEMPRE VISÍVEL! ====
-        if usuario["host"]:
-            if st.button("🔄 Sincronizar agora"):
-                with st.spinner("Sincronizando dados do banco..."):
-                    sync_mysql_to_sqlite()
-                    novo_sync = datetime.now().isoformat()
-                    atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
-                    st.session_state["usuario"]["ultimo_sync"] = novo_sync
-                    st.success("Dados atualizados manualmente!")
+        if st.button("🔄 Sincronizar agora"):
+            with st.spinner("Sincronizando dados do banco..."):
+                tabelas_sync = []
+                with sqlite3.connect(DB_PATH) as conn:
+                    c = conn.cursor()
+                    for row in c.execute("SELECT nome_tabela, tipo FROM tabelas_sincronizadas WHERE usuario_id = ?", (id_usuario,)):
+                        tabelas_sync.append(row)
+                sync_mysql_to_sqlite(tabelas_sync)
+                novo_sync = datetime.now().isoformat()
+                atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
+                st.session_state["usuario"]["ultimo_sync"] = novo_sync
+                st.success("Dados atualizados manualmente!")
 
         # Diagnóstico: tabelas no SQLite
         try:

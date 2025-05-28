@@ -1,9 +1,9 @@
 import requests
 import streamlit as st
 
-# Configuração do endpoint local do Ollama (IA local)
-OLLAMA_API_URL = "http://localhost:11434/api/chat"
-MODEL = "llama3"  # Substitua por outro modelo instalado se preferir
+OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "SUA_KEY")
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 
 def executar_pergunta(pergunta, sqlite_path):
     st.markdown("#### 🤖 Resposta da IA")
@@ -11,40 +11,30 @@ def executar_pergunta(pergunta, sqlite_path):
         st.info("Digite uma pergunta para a IA.")
         return
 
-    # Mensagem de sistema para orientar o modelo
     messages = [
-        {
-            "role": "system",
-            "content": (
-                "Você é um assistente inteligente para análise de indicadores empresariais. "
-                "Faça perguntas de refinamento se necessário (exemplo: resultado analítico ou sintético?), "
-                "e use dados do banco SQLite indicado. Sempre responda de forma objetiva, e caso necessário, "
-                "retorne respostas estruturadas em texto e tabelas usando Markdown."
-            )
-        },
-        {"role": "user", "content": pergunta}
+        {"role": "system", "content": (
+            "Você é um assistente inteligente para análise de indicadores de gestão empresarial. "
+            "Seja objetivo e forneça respostas claras com base nos dados disponíveis. "
+            "Se necessário, peça esclarecimentos ao usuário sobre o tipo de análise desejada (ex: sintética ou analítica)."
+        )},
+        {"role": "user", "content": pergunta},
     ]
 
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    body = {
+        "model": MODEL,
+        "messages": messages,
+        "max_tokens": 800,
+        "temperature": 0.2
+    }
     try:
-        response = requests.post(
-            OLLAMA_API_URL,
-            json={
-                "model": MODEL,
-                "messages": messages,
-                "stream": False
-            },
-            timeout=60
-        )
+        response = requests.post(OPENROUTER_API_URL, headers=headers, json=body, timeout=45)
         response.raise_for_status()
-        data = response.json()
-        # A resposta pode variar dependendo da versão do Ollama. Normalmente:
-        if "message" in data and "content" in data["message"]:
-            resposta = data["message"]["content"]
-        elif "choices" in data and data["choices"]:
-            resposta = data["choices"][0]["message"]["content"]
-        else:
-            resposta = "Resposta não encontrada na resposta da IA local."
+        resposta = response.json()["choices"][0]["message"]["content"]
         st.success(resposta)
     except Exception as e:
-        st.error(f"Erro ao acessar o Ollama local: {e}")
+        st.error(f"Erro ao acessar o OpenRouter: {e}")
         st.exception(e)
