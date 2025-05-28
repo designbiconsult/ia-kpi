@@ -124,7 +124,7 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
     except Exception as e:
         st.error(f"❌ Erro ao carregar indicadores: {e}")
 
-# === GERENCIAMENTO DE TABELAS ===
+# === GERENCIAMENTO DE TABELAS COM CHECKBOX ===
 def gerenciar_tabelas(sqlite_path):
     st.subheader("🗂️ Gerenciar Tabelas no Banco Local")
     with sqlite3.connect(sqlite_path) as conn:
@@ -133,20 +133,40 @@ def gerenciar_tabelas(sqlite_path):
         st.info("Nenhuma tabela sincronizada ainda.")
         return
 
-    tabela_selecionada = st.selectbox("Selecione uma tabela para visualizar/remover:", tabelas["name"].tolist())
-    with sqlite3.connect(sqlite_path) as conn:
-        if st.button("Remover tabela selecionada"):
-            conn.execute(f"DROP TABLE IF EXISTS {tabela_selecionada}")
-            conn.commit()
-            st.success(f"Tabela '{tabela_selecionada}' removida com sucesso!")
-            st.experimental_rerun()
+    # Checkboxes para seleção múltipla
+    selected = []
+    with st.form("form_remover_tabelas"):
+        st.write("Selecione as tabelas que deseja remover:")
+        col1, col2 = st.columns(2)
+        metade = len(tabelas)//2+1
+        selected = []
+        for i, tabela in enumerate(tabelas["name"].tolist()):
+            with (col1 if i < metade else col2):
+                checked = st.checkbox(tabela, key=f"chk_{tabela}")
+                if checked:
+                    selected.append(tabela)
+        st.write("Para visualizar o conteúdo, selecione abaixo:")
+        tabela_visualizar = st.selectbox("Visualizar tabela:", tabelas["name"].tolist())
+        submit = st.form_submit_button("Remover tabelas selecionadas")
 
-        st.write(f"Pré-visualização da tabela: {tabela_selecionada}")
-        try:
-            df_prev = pd.read_sql(f"SELECT * FROM {tabela_selecionada} LIMIT 100", conn)
-            st.dataframe(df_prev)
-        except Exception as e:
-            st.error(f"Erro ao carregar tabela: {e}")
+    # Remover as tabelas marcadas
+    if submit and selected:
+        with sqlite3.connect(sqlite_path) as conn:
+            for tabela in selected:
+                conn.execute(f"DROP TABLE IF EXISTS {tabela}")
+            conn.commit()
+        st.success(f"Tabelas removidas: {', '.join(selected)}")
+        st.experimental_rerun()
+
+    # Visualizar tabela escolhida
+    if tabela_visualizar:
+        with sqlite3.connect(sqlite_path) as conn:
+            st.write(f"Pré-visualização da tabela: {tabela_visualizar}")
+            try:
+                df_prev = pd.read_sql(f"SELECT * FROM {tabela_visualizar} LIMIT 100", conn)
+                st.dataframe(df_prev)
+            except Exception as e:
+                st.error(f"Erro ao carregar tabela: {e}")
 
 # =============== SIDEBAR UNIVERSAL ===============
 if st.session_state.get("logado"):
