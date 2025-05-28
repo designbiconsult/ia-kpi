@@ -161,7 +161,7 @@ def tela_selecao_tabelas():
         else:
             st.session_state["pagina"] = "dashboard"
             st.session_state["forcar_sync_agora"] = True
-            st.experimental_rerun()
+            st.rerun()
     if col2.button("Voltar"):
         st.session_state["pagina"] = "dashboard"
         st.rerun()
