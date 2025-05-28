@@ -10,6 +10,20 @@ from sync.sync_db import sync_mysql_to_sqlite
 DB_PATH = "data/database.db"
 os.makedirs("data", exist_ok=True)
 
+# --- MIGRAÇÃO: Adiciona colunas novas se não existirem ---
+def garantir_campos_novos():
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+        c = conn.cursor()
+        c.execute("PRAGMA table_info(usuarios)")
+        cols = [x[1] for x in c.fetchall()]
+        if "intervalo_sync" not in cols:
+            c.execute("ALTER TABLE usuarios ADD COLUMN intervalo_sync INTEGER DEFAULT 60")
+        if "ultimo_sync" not in cols:
+            c.execute("ALTER TABLE usuarios ADD COLUMN ultimo_sync TEXT")
+        conn.commit()
+garantir_campos_novos()
+# --- FIM DA MIGRAÇÃO ---
+
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
 with sqlite3.connect(DB_PATH, timeout=10) as conn:
@@ -120,11 +134,10 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
             st.pyplot(fig)
         else:
             st.info("Não há dados para o período.")
-
     except Exception as e:
         st.error(f"❌ Erro ao carregar indicadores: {e}")
 
-# =============== SIDEBAR UNIVERSAL ===============
+# ===== SIDEBAR UNIVERSAL =====
 if st.session_state.get("logado"):
     with st.sidebar:
         st.markdown("---")
@@ -137,7 +150,7 @@ if st.session_state.get("logado"):
             st.session_state["ja_sincronizou"] = False
             st.rerun()
 
-# =============== LOGIN ===============
+# ===== LOGIN =====
 if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
     st.title("🔐 Login IA KPI")
     email = st.text_input("Email")
@@ -172,12 +185,11 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
 
     st.markdown("---")
     st.markdown("Ainda não possui cadastro?")
-
     if st.button("👉 Cadastre-se aqui"):
         st.session_state["pagina"] = "cadastro"
         st.rerun()
 
-# =============== CADASTRO ===============
+# ===== CADASTRO =====
 elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]:
     st.title("📊 Cadastro de Cliente IA KPI")
     with st.form("cadastro_form"):
@@ -190,26 +202,25 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
             if not (nome and email and senha):
                 st.error("Preencha todos os campos.")
             else:
-                try:
-                    with sqlite3.connect(DB_PATH, timeout=10) as conn:
-                        c = conn.cursor()
+                with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                    c = conn.cursor()
+                    try:
                         c.execute(
                             "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
                             (nome, email, senha)
                         )
                         conn.commit()
-                    st.success("Cadastro realizado com sucesso! Faça login para continuar.")
-                    st.session_state["pagina"] = "login"
-                    st.rerun()
-                except sqlite3.IntegrityError:
-                    st.error("Já existe um usuário cadastrado com este e-mail. Por favor, use outro e-mail.")
+                        st.success("Cadastro realizado com sucesso! Faça login para continuar.")
+                        st.session_state["pagina"] = "login"
+                        st.rerun()
+                    except sqlite3.IntegrityError:
+                        st.error("Este email já está cadastrado.")
+        # Botão para voltar ao login
+        if st.form_submit_button("⬅️ Voltar para Login"):
+            st.session_state["pagina"] = "login"
+            st.rerun()
 
-    # Botão de voltar para login
-    if st.button("⬅️ Voltar para Login"):
-        st.session_state["pagina"] = "login"
-        st.rerun()
-
-# =============== CONEXÃO BANCO ===============
+# ===== CONEXÃO BANCO =====
 elif st.session_state.get("pagina") == "conexao":
     st.title("⚙️ Configuração da conexão com o banco")
     usuario = st.session_state["usuario"]
@@ -217,7 +228,7 @@ elif st.session_state.get("pagina") == "conexao":
         host = st.text_input("Host do banco", value=usuario.get("host") or "")
         porta = st.text_input("Porta", value=usuario.get("porta") or "3306")
         usuario_banco = st.text_input("Usuário do banco", value=usuario.get("usuario_banco") or "")
-        senha_banco = st.text_input("Senha do banco", value=usuario.get("senha_banco") or "", type="password")
+        senha_banco = st.text_input("Senha", value=usuario.get("senha_banco") or "", type="password")
         schema = st.text_input("Schema", value=usuario.get("schema") or "")
         intervalo_sync = st.selectbox("Intervalo de sincronização (min):", [5,10,15,30,60,120,240,1440], index=4)
         submitted = st.form_submit_button("Salvar conexão")
@@ -253,7 +264,7 @@ elif st.session_state.get("pagina") == "conexao":
         st.session_state["pagina"] = "dashboard"
         st.rerun()
 
-# =============== DASHBOARD PRINCIPAL ===============
+# ===== DASHBOARD PRINCIPAL =====
 elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
@@ -264,7 +275,6 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
 
-    # Sincronismo só na primeira entrada do dashboard ou via botão
     if not usuario["host"]:
         st.warning("Configure a conexão com o banco de dados para continuar. (Menu lateral)")
     else:
