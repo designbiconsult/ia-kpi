@@ -27,7 +27,7 @@ def executar_pergunta(pergunta, sqlite_path):
                 ],
                 "stream": False
             },
-            timeout=45
+            timeout=120
         )
         response.raise_for_status()
         data = response.json()
