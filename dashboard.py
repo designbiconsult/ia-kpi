@@ -128,7 +128,7 @@ def excluir_tabelas_sqlite(sqlite_path, tabelas_excluir):
     except Exception as e:
         st.error(f"Erro ao excluir tabela(s): {e}")
 
-# ========== SIDEBAR UNIVERSAL ==========
+# ===== SIDEBAR UNIVERSAL =====
 if st.session_state.get("logado"):
     with st.sidebar:
         st.markdown("---")
@@ -140,7 +140,6 @@ if st.session_state.get("logado"):
             st.session_state["pagina"] = "login"
             st.session_state["ja_sincronizou"] = False
             st.rerun()
-        # Exclusão de tabelas sincronizadas
         st.markdown("---")
         st.subheader("Excluir tabelas locais:")
         sqlite_path = st.session_state.get("sqlite_path", None)
@@ -163,7 +162,7 @@ if st.session_state.get("logado"):
         else:
             st.info("Banco local ainda não sincronizado.")
 
-# ========== LOGIN ==========
+# ===== LOGIN =====
 if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
     st.title("🔐 Login IA KPI")
     email = st.text_input("Email")
@@ -202,7 +201,7 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
         st.session_state["pagina"] = "cadastro"
         st.rerun()
 
-# ========== CADASTRO ==========
+# ===== CADASTRO =====
 elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]:
     st.title("📊 Cadastro de Cliente IA KPI")
     with st.form("cadastro_form"):
@@ -232,7 +231,7 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
         st.session_state["pagina"] = "login"
         st.rerun()
 
-# ========== CONEXÃO BANCO ==========
+# ===== CONEXÃO BANCO =====
 elif st.session_state.get("pagina") == "conexao":
     st.title("⚙️ Configuração da conexão com o banco")
     usuario = st.session_state["usuario"]
@@ -274,7 +273,7 @@ elif st.session_state.get("pagina") == "conexao":
         st.session_state["pagina"] = "dashboard"
         st.rerun()
 
-# ========== DASHBOARD PRINCIPAL ==========
+# ===== DASHBOARD PRINCIPAL =====
 elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
