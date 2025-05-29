@@ -382,4 +382,4 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
             pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
             submitted = st.form_submit_button("🧠 Consultar IA")
             if submitted and pergunta.strip():
-                executar_pergunta(pergunta, sqlite_path)
+                executar_pergunta(pergunta, st.session_state["sqlite_path"])
