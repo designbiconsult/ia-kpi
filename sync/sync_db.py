@@ -1,4 +1,4 @@
-# sync_db.py
+import os
 from sqlalchemy import create_engine, inspect
 import pandas as pd
 import sqlite3
@@ -22,6 +22,45 @@ def obter_lista_tabelas_views_remotas():
         st.error(f"Erro ao buscar tabelas remotas: {e}")
         return []
 
+def preencher_estrutura_dinamica(sqlite_path, tabelas_sync):
+    """
+    Gera a tabela estrutura_dinamica (caso não exista) e popula com as colunas/tabelas do banco local.
+    """
+    with sqlite3.connect(sqlite_path, timeout=30) as conn:
+        c = conn.cursor()
+        # Criação da tabela, se necessário
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS estrutura_dinamica (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tabela TEXT,
+                coluna TEXT,
+                tipo TEXT,
+                exemplo TEXT,
+                descricao TEXT
+            )
+        ''')
+        conn.commit()
+
+        # Limpa a estrutura para sempre refletir as tabelas atuais
+        c.execute('DELETE FROM estrutura_dinamica')
+        conn.commit()
+
+        for tabela in tabelas_sync:
+            try:
+                df = pd.read_sql(f"SELECT * FROM `{tabela}` LIMIT 1", conn)
+                for coluna in df.columns:
+                    exemplo = str(df[coluna].iloc[0]) if not df.empty else ""
+                    tipo = str(df[coluna].dtype)
+                    descricao = f"Coluna da tabela {tabela} chamada {coluna}, tipo {tipo}"
+                    c.execute('''
+                        INSERT INTO estrutura_dinamica (tabela, coluna, tipo, exemplo, descricao)
+                        VALUES (?, ?, ?, ?, ?)
+                    ''', (tabela, coluna, tipo, exemplo, descricao))
+            except Exception as e:
+                print(f"Erro ao processar tabela {tabela}: {e}")
+
+        conn.commit()
+
 def sync_mysql_to_sqlite(tabelas_sync):
     mysql_host = st.session_state.get("mysql_host")
     mysql_port = st.session_state.get("mysql_port")
@@ -39,6 +78,8 @@ def sync_mysql_to_sqlite(tabelas_sync):
                 st.write(f"🔄 Sincronizando: {entidade}")
                 df = pd.read_sql(f"SELECT * FROM `{mysql_database}`.`{entidade}`", mysql_engine)
                 df.to_sql(entidade, con=sqlite_conn, if_exists="replace", index=False)
-        st.success("✅ Sincronização concluída com sucesso.")
+        # --> Agora preenche a estrutura dinâmica!
+        preencher_estrutura_dinamica(output_sqlite_path, tabelas_sync)
+        st.success("✅ Sincronização concluída com sucesso (estrutura mapeada).")
     except Exception as e:
         st.error(f"❌ Erro ao sincronizar: {e}")
