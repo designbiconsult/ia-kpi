@@ -155,7 +155,7 @@ if st.session_state.get("logado"):
                 if st.button("Excluir selecionadas"):
                     if tabelas_excluir:
                         excluir_tabelas_sqlite(sqlite_path, tabelas_excluir)
-                        st.experimental_rerun()
+                        st.rerun()
                     else:
                         st.info("Nenhuma tabela marcada para exclusão.")
             else:
@@ -326,7 +326,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                             st.session_state["usuario"]["ultimo_sync"] = novo_sync
                             st.success("Dados atualizados automaticamente!")
                             st.session_state["ja_sincronizou"] = True
-                            st.experimental_rerun()
+                            st.rerun()
                         st.stop()
                     else:
                         st.warning("Nenhuma tabela remota encontrada. Confira os dados de conexão.")
@@ -354,7 +354,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                     st.session_state["usuario"]["ultimo_sync"] = novo_sync
                     st.success("Dados atualizados manualmente!")
                     st.session_state["ja_sincronizou"] = True
-                    st.experimental_rerun()
+                    st.rerun()
                 st.stop()
             else:
                 st.warning("Nenhuma tabela remota encontrada. Confira os dados de conexão.")
