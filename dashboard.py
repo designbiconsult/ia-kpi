@@ -155,7 +155,7 @@ if st.session_state.get("logado"):
                 if st.button("Excluir selecionadas"):
                     if tabelas_excluir:
                         excluir_tabelas_sqlite(sqlite_path, tabelas_excluir)
-                        st.experimental_rerun()
+                        st.rerun()
                     else:
                         st.info("Nenhuma tabela marcada para exclusão.")
             else:
