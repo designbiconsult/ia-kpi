@@ -4,7 +4,7 @@ import sqlite3
 import pandas as pd
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-OLLAMA_MODEL = "mistral"
+OLLAMA_MODEL = "llama3"
 
 def obter_estrutura_dinamica(sqlite_path):
     try:
