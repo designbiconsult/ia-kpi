@@ -1,9 +1,65 @@
-# sync_db.py
 import os
-from sqlalchemy import create_engine, inspect
 import pandas as pd
 import sqlite3
+from sqlalchemy import create_engine, inspect
 import streamlit as st
+
+def gerar_descricao_semantica(nome_tabela, nome_coluna):
+    nome_tabela_low = nome_tabela.lower()
+    if "pedido" in nome_tabela_low:
+        tabela_desc = "Tabela de pedidos de venda realizados."
+    elif "notafiscal" in nome_tabela_low or "saida" in nome_tabela_low:
+        tabela_desc = "Tabela de notas fiscais de saída, representa o faturamento."
+    elif "compra" in nome_tabela_low or "notaentrada" in nome_tabela_low or "entrada" in nome_tabela_low:
+        tabela_desc = "Tabela de compras/nota de entrada, representa aquisições de materiais."
+    else:
+        tabela_desc = f"Tabela {nome_tabela}"
+
+    if "referencia" in nome_coluna.lower():
+        return f"{tabela_desc} - Código/referência do produto."
+    if "descricao" in nome_coluna.lower():
+        return f"{tabela_desc} - Descrição do produto."
+    if "quant" in nome_coluna.lower():
+        return f"{tabela_desc} - Quantidade relacionada ao item/produto."
+    if "data" in nome_coluna.lower():
+        return f"{tabela_desc} - Data relevante do processo."
+    if "cor" in nome_coluna.lower():
+        return f"{tabela_desc} - Cor do produto/material."
+    if "tamanho" in nome_coluna.lower():
+        return f"{tabela_desc} - Tamanho do produto/material."
+    return f"{tabela_desc} - Coluna {nome_coluna}"
+
+def salvar_estrutura_dinamica(entidades, conn_sqlite):
+    cursor = conn_sqlite.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS estrutura_dinamica (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tabela TEXT,
+            coluna TEXT,
+            tipo TEXT,
+            exemplo TEXT,
+            descricao TEXT
+        )
+    ''')
+    conn_sqlite.commit()
+    cursor.execute("DELETE FROM estrutura_dinamica")
+    conn_sqlite.commit()
+
+    for tabela in entidades:
+        try:
+            df = pd.read_sql(f"SELECT * FROM {tabela} LIMIT 1", conn_sqlite)
+            for coluna in df.columns:
+                exemplo = str(df[coluna].iloc[0]) if not df.empty else ""
+                tipo = str(df[coluna].dtype)
+                descricao = gerar_descricao_semantica(tabela, coluna)
+                cursor.execute('''
+                    INSERT INTO estrutura_dinamica (tabela, coluna, tipo, exemplo, descricao)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (tabela, coluna, tipo, exemplo, descricao))
+        except Exception as e:
+            print(f"Erro ao processar tabela {tabela}: {e}")
+    conn_sqlite.commit()
+    cursor.close()
 
 def obter_lista_tabelas_views_remotas():
     mysql_host = st.session_state.get("mysql_host")
@@ -22,42 +78,8 @@ def obter_lista_tabelas_views_remotas():
         st.error(f"Erro ao buscar tabelas remotas: {e}")
         return []
 
-def preencher_estrutura_dinamica(sqlite_path, tabelas_sync):
-    """Preenche a tabela estrutura_dinamica com metadados das tabelas sincronizadas."""
-    with sqlite3.connect(sqlite_path) as conn:
-        cursor = conn.cursor()
-        # Cria a tabela se não existir
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS estrutura_dinamica (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tabela TEXT,
-                coluna TEXT,
-                tipo TEXT,
-                exemplo TEXT,
-                descricao TEXT
-            )
-        ''')
-        # Limpa estrutura antiga (opcional, mas recomendado para sync)
-        cursor.execute("DELETE FROM estrutura_dinamica")
-        conn.commit()
-
-        for tabela in tabelas_sync:
-            try:
-                df = pd.read_sql(f"SELECT * FROM {tabela} LIMIT 1", conn)
-                for coluna in df.columns:
-                    exemplo = str(df[coluna].iloc[0]) if not df.empty else ""
-                    tipo = str(df[coluna].dtype)
-                    descricao = f"Coluna da tabela {tabela} chamada {coluna}, tipo {tipo}"
-                    cursor.execute(
-                        '''INSERT INTO estrutura_dinamica (tabela, coluna, tipo, exemplo, descricao)
-                           VALUES (?, ?, ?, ?, ?)''',
-                        (tabela, coluna, tipo, exemplo, descricao)
-                    )
-            except Exception as e:
-                st.warning(f"Erro ao processar tabela {tabela}: {e}")
-        conn.commit()
-
 def sync_mysql_to_sqlite(tabelas_sync):
+    import os
     mysql_host = st.session_state.get("mysql_host")
     mysql_port = st.session_state.get("mysql_port")
     mysql_user = st.session_state.get("mysql_user")
@@ -74,8 +96,7 @@ def sync_mysql_to_sqlite(tabelas_sync):
                 st.write(f"🔄 Sincronizando: {entidade}")
                 df = pd.read_sql(f"SELECT * FROM `{mysql_database}`.`{entidade}`", mysql_engine)
                 df.to_sql(entidade, con=sqlite_conn, if_exists="replace", index=False)
-        # Chama preenchimento da estrutura dinâmica aqui!
-        preencher_estrutura_dinamica(output_sqlite_path, tabelas_sync)
-        st.success(f"✅ Sincronização concluída com sucesso! Banco: {output_sqlite_path}")
+            salvar_estrutura_dinamica(tabelas_sync, sqlite_conn)
+        st.success("✅ Sincronização concluída com sucesso.")
     except Exception as e:
         st.error(f"❌ Erro ao sincronizar: {e}")
