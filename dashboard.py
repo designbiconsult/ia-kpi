@@ -301,7 +301,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                         st.session_state["usuario"]["ultimo_sync"] = novo_sync
                         st.success("Dados atualizados automaticamente!")
                         st.session_state["ja_sincronizou"] = True
-                        st.experimental_rerun()
+                        st.rerun()
                 st.stop()
             else:
                 st.info(f"Última sincronização: {ultimo_sync_str}")
@@ -334,7 +334,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                     st.session_state["usuario"]["ultimo_sync"] = novo_sync
                     st.success("Dados atualizados manualmente!")
                     st.session_state["ja_sincronizou"] = True
-                    st.experimental_rerun()
+                    st.rerun()
             st.stop()
 
         # Diagnóstico: tabelas no SQLite
