@@ -309,15 +309,12 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                 with st.spinner("Sincronizando dados do banco..."):
                     tabelas_disponiveis = obter_lista_tabelas_views_remotas()
                     if tabelas_disponiveis:
-                        # Checkbox estilo Power BI
                         st.subheader("Selecione as tabelas/views para sincronizar:")
                         tabelas_selecionadas = []
-                        cols = st.columns(4)
-                        for idx, tb in enumerate(tabelas_disponiveis):
-                            with cols[idx % 4]:
-                                checked = st.checkbox(tb, key=f"tb_sync_{tb}", value=True)
-                                if checked:
-                                    tabelas_selecionadas.append(tb)
+                        for tb in tabelas_disponiveis:
+                            checked = st.checkbox(tb, key=f"tb_sync_{tb}", value=True)
+                            if checked:
+                                tabelas_selecionadas.append(tb)
                         if st.button("Confirmar e sincronizar"):
                             sync_mysql_to_sqlite(tabelas_selecionadas)
                             novo_sync = datetime.now().isoformat()
@@ -334,18 +331,16 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                 st.info(f"Última sincronização: {ultimo_sync_str}")
             st.session_state["ja_sincronizou"] = True
 
-        # Botão manual de sincronismo (checkbox também!)
+        # Botão manual de sincronismo (checkbox também, uma única coluna!)
         if st.button("🔄 Sincronizar agora"):
             tabelas_disponiveis = obter_lista_tabelas_views_remotas()
             if tabelas_disponiveis:
                 st.subheader("Selecione as tabelas/views para sincronizar:")
                 tabelas_selecionadas = []
-                cols = st.columns(4)
-                for idx, tb in enumerate(tabelas_disponiveis):
-                    with cols[idx % 4]:
-                        checked = st.checkbox(tb, key=f"tb_sync_manual_{tb}", value=True)
-                        if checked:
-                            tabelas_selecionadas.append(tb)
+                for tb in tabelas_disponiveis:
+                    checked = st.checkbox(tb, key=f"tb_sync_manual_{tb}", value=True)
+                    if checked:
+                        tabelas_selecionadas.append(tb)
                 if st.button("Confirmar e sincronizar (manual)"):
                     sync_mysql_to_sqlite(tabelas_selecionadas)
                     novo_sync = datetime.now().isoformat()
