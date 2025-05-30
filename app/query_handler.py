@@ -2,24 +2,32 @@ import requests
 import streamlit as st
 import sqlite3
 import pandas as pd
+import json
 
-# IA LOCAL via Ollama
+# Configura se vai usar IA local (Ollama) ou OpenRouter:
+USE_LOCAL_OLLAMA = True  # True = usa IA local, False = OpenRouter
+
+# Configurações do Ollama local
 OLLAMA_URL = "http://localhost:11434/api/chat"
 OLLAMA_MODEL = "llama3"
 
-def get_estrutura_prompt(sqlite_path):
+# Configurações do OpenRouter
+OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "sua_chave_aqui")
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+
+def carregar_estrutura_dinamica(sqlite_path):
     try:
         with sqlite3.connect(sqlite_path) as conn:
-            df = pd.read_sql("SELECT tabela, coluna, tipo, exemplo, descricao FROM estrutura_dinamica", conn)
-        estrutura = ""
-        for nome_tabela in df["tabela"].unique():
-            colunas = df[df["tabela"] == nome_tabela]
-            estrutura += f"\nTabela: {nome_tabela}\n"
-            for _, row in colunas.iterrows():
-                estrutura += f"  - {row['coluna']} ({row['tipo']}): {row['descricao']}\n"
-        return estrutura
+            df = pd.read_sql("SELECT tabela, coluna, tipo, descricao FROM estrutura_dinamica", conn)
+        if df.empty:
+            return None, "Tabela estrutura_dinamica está vazia."
+        estrutura_txt = ""
+        for row in df.itertuples():
+            estrutura_txt += f"Tabela: {row.tabela}, Coluna: {row.coluna}, Tipo: {row.tipo}, Descrição: {row.descricao}\n"
+        return estrutura_txt, None
     except Exception as e:
-        return "Estrutura dinâmica não carregada. A resposta pode ser limitada."
+        return None, f"Erro ao ler estrutura_dinamica: {e}"
 
 def executar_pergunta(pergunta, sqlite_path):
     st.markdown("#### 🤖 Resposta da IA")
@@ -28,35 +36,88 @@ def executar_pergunta(pergunta, sqlite_path):
         st.info("Digite uma pergunta para a IA.")
         return
 
-    estrutura = get_estrutura_prompt(sqlite_path)
+    estrutura, erro_estrutura = carregar_estrutura_dinamica(sqlite_path)
+    if not estrutura:
+        st.error(f"Estrutura dinâmica não carregada. {erro_estrutura or ''}\nTente sincronizar as tabelas primeiro.")
+        return
 
-    prompt_system = (
-        "Você é um assistente de BI. Responda apenas com base nas tabelas e colunas disponíveis abaixo:\n"
-        f"{estrutura}\n"
-        "Ao gerar SQL, use SOMENTE essas tabelas e colunas, nunca invente nomes. "
-        "Se não houver dados suficientes, peça refinamento ao usuário. "
-        "Depois de executar o SQL, retorne um resumo ou tabela clara e, se possível, sugira um formato visual (ex: tabela, gráfico de barras, cartão etc)."
+    # PROMPT que "obriga" a IA a usar apenas as tabelas/colunas fornecidas:
+    prompt_base = (
+        "Você é um assistente de análise de dados. Responda SEMPRE com base apenas nas tabelas e colunas fornecidas abaixo.\n"
+        "Não invente nomes de tabelas ou colunas. Use sempre os nomes exatos. Se precisar montar uma consulta SQL, use os nomes informados.\n"
+        "Ao final, exiba o SQL gerado e responda o resultado da consulta (explique o que a consulta retorna).\n"
+        "Estrutura do banco:\n"
+        f"{estrutura}"
     )
 
     messages = [
-        {"role": "system", "content": prompt_system},
-        {"role": "user", "content": pergunta},
+        {"role": "system", "content": prompt_base},
+        {"role": "user", "content": pergunta}
     ]
 
     try:
-        response = requests.post(
-            OLLAMA_URL,
-            json={
-                "model": OLLAMA_MODEL,
+        if USE_LOCAL_OLLAMA:
+            # ============ IA LOCAL (OLLAMA) ============
+            response = requests.post(
+                OLLAMA_URL,
+                json={
+                    "model": OLLAMA_MODEL,
+                    "messages": messages,
+                    "stream": False
+                },
+                timeout=5000
+            )
+            if response.status_code == 200:
+                content = response.json()
+                # Pega só o texto da resposta da IA:
+                ia_response = content.get("message", {}).get("content", "")
+                st.write("**SQL sugerido pela IA:**")
+                # Tenta extrair SQL de forma "manual" (ajustar caso precise)
+                linhas = ia_response.splitlines()
+                sql_block = ""
+                in_sql = False
+                for l in linhas:
+                    if l.strip().upper().startswith("SELECT"):
+                        in_sql = True
+                    if in_sql:
+                        sql_block += l + "\n"
+                    if l.strip() == "" and in_sql:
+                        break
+                if sql_block:
+                    st.code(sql_block.strip(), language="sql")
+                st.success(ia_response)
+            else:
+                st.error(f"Erro ao acessar IA local: {response.text}")
+        else:
+            # ============ OPENROUTER ============
+            headers = {
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            body = {
+                "model": OPENROUTER_MODEL,
                 "messages": messages,
-                "stream": False
-            },
-            timeout=5000
-        )
-        response.raise_for_status()
-        resposta = response.json()["message"]["content"]
-        st.success(resposta)
-        # Exibir o SQL extraído da resposta da IA, se quiser debug, pode extrair via regex ou analisar a resposta.
+                "max_tokens": 800,
+                "temperature": 0.2
+            }
+            response = requests.post(OPENROUTER_API_URL, headers=headers, json=body, timeout=60)
+            response.raise_for_status()
+            result = response.json()
+            ia_response = result["choices"][0]["message"]["content"]
+            st.write("**SQL sugerido pela IA:**")
+            linhas = ia_response.splitlines()
+            sql_block = ""
+            in_sql = False
+            for l in linhas:
+                if l.strip().upper().startswith("SELECT"):
+                    in_sql = True
+                if in_sql:
+                    sql_block += l + "\n"
+                if l.strip() == "" and in_sql:
+                    break
+            if sql_block:
+                st.code(sql_block.strip(), language="sql")
+            st.success(ia_response)
     except Exception as e:
         st.error(f"Erro ao acessar IA local: {e}")
         st.exception(e)
