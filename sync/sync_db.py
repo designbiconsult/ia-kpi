@@ -34,11 +34,12 @@ def salvar_estrutura_dinamica(entidades, conn_sqlite):
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS estrutura_dinamica (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tabela TEXT,
-            coluna TEXT,
-            tipo TEXT,
-            exemplo TEXT,
-            descricao TEXT
+            sistema_id TEXT,
+            nome_tabela TEXT,
+            nome_coluna TEXT,
+            tipo_dado TEXT,
+            valor_exemplo TEXT,
+            descricao_gerada TEXT
         )
     ''')
     conn_sqlite.commit()
@@ -53,9 +54,17 @@ def salvar_estrutura_dinamica(entidades, conn_sqlite):
                 tipo = str(df[coluna].dtype)
                 descricao = gerar_descricao_semantica(tabela, coluna)
                 cursor.execute('''
-                    INSERT INTO estrutura_dinamica (tabela, coluna, tipo, exemplo, descricao)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (tabela, coluna, tipo, exemplo, descricao))
+                    INSERT INTO estrutura_dinamica 
+                    (sistema_id, nome_tabela, nome_coluna, tipo_dado, valor_exemplo, descricao_gerada)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (
+                    "local",           # ou outra identificação do sistema/banco
+                    tabela, 
+                    coluna, 
+                    tipo, 
+                    exemplo, 
+                    descricao
+                ))
         except Exception as e:
             print(f"Erro ao processar tabela {tabela}: {e}")
     conn_sqlite.commit()
@@ -79,7 +88,6 @@ def obter_lista_tabelas_views_remotas():
         return []
 
 def sync_mysql_to_sqlite(tabelas_sync):
-    import os
     mysql_host = st.session_state.get("mysql_host")
     mysql_port = st.session_state.get("mysql_port")
     mysql_user = st.session_state.get("mysql_user")
