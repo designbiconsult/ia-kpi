@@ -81,7 +81,7 @@ def executar_pergunta(pergunta, sqlite_path):
                 "messages": [{"role": "user", "content": prompt_sql}],
                 "stream": False
             },
-            timeout=90
+            timeout=500
         )
         resposta_ia = response.json()['message']['content']
     else:
@@ -128,7 +128,7 @@ def executar_pergunta(pergunta, sqlite_path):
                 "messages": [{"role": "user", "content": prompt_resposta}],
                 "stream": False
             },
-            timeout=90
+            timeout=500
         )
         resposta_final = response.json()['message']['content']
     else:
