@@ -36,6 +36,10 @@ if "pagina" not in st.session_state:
     st.session_state["pagina"] = "login"
 if "ja_sincronizou" not in st.session_state:
     st.session_state["ja_sincronizou"] = False
+if "exibir_selecao_tabelas" not in st.session_state:
+    st.session_state["exibir_selecao_tabelas"] = False
+if "selecionadas_para_sync" not in st.session_state:
+    st.session_state["selecionadas_para_sync"] = []
 
 def autenticar(email, senha):
     with sqlite3.connect(DB_PATH, timeout=10) as conn:
@@ -128,7 +132,7 @@ def excluir_tabelas_sqlite(sqlite_path, tabelas_excluir):
     except Exception as e:
         st.error(f"Erro ao excluir tabela(s): {e}")
 
-# ===== SIDEBAR UNIVERSAL =====
+# =============== SIDEBAR UNIVERSAL ===============
 if st.session_state.get("logado"):
     with st.sidebar:
         st.markdown("---")
@@ -140,6 +144,7 @@ if st.session_state.get("logado"):
             st.session_state["pagina"] = "login"
             st.session_state["ja_sincronizou"] = False
             st.rerun()
+        # Exclusão de tabelas sincronizadas
         st.markdown("---")
         st.subheader("Excluir tabelas locais:")
         sqlite_path = st.session_state.get("sqlite_path", None)
@@ -162,7 +167,7 @@ if st.session_state.get("logado"):
         else:
             st.info("Banco local ainda não sincronizado.")
 
-# ===== LOGIN =====
+# =============== LOGIN ===============
 if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
     st.title("🔐 Login IA KPI")
     email = st.text_input("Email")
@@ -191,6 +196,7 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
             st.session_state["sqlite_path"] = f"data/cliente_{usuario[0]}.db"
             st.session_state["pagina"] = "dashboard"
             st.session_state["ja_sincronizou"] = False
+            st.session_state["exibir_selecao_tabelas"] = False
             st.rerun()
         else:
             st.error("Credenciais inválidas.")
@@ -201,7 +207,7 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
         st.session_state["pagina"] = "cadastro"
         st.rerun()
 
-# ===== CADASTRO =====
+# =============== CADASTRO ===============
 elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]:
     st.title("📊 Cadastro de Cliente IA KPI")
     with st.form("cadastro_form"):
@@ -209,7 +215,6 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
         email = st.text_input("Email")
         senha = st.text_input("Senha", type="password")
         submitted = st.form_submit_button("Cadastrar")
-
         if submitted:
             if not (nome and email and senha):
                 st.error("Preencha todos os campos.")
@@ -227,11 +232,12 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
                         st.rerun()
                     except sqlite3.IntegrityError:
                         st.error("Este email já está cadastrado.")
+    # Botão voltar para login
     if st.button("⬅️ Voltar para Login"):
         st.session_state["pagina"] = "login"
         st.rerun()
 
-# ===== CONEXÃO BANCO =====
+# =============== CONEXÃO BANCO ===============
 elif st.session_state.get("pagina") == "conexao":
     st.title("⚙️ Configuração da conexão com o banco")
     usuario = st.session_state["usuario"]
@@ -273,8 +279,9 @@ elif st.session_state.get("pagina") == "conexao":
         st.session_state["pagina"] = "dashboard"
         st.rerun()
 
-# ===== DASHBOARD PRINCIPAL =====
+# =============== DASHBOARD PRINCIPAL ===============
 elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
+
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
     st.session_state["mysql_host"] = usuario["host"]
@@ -283,6 +290,51 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_password"] = usuario["senha_banco"]
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
+
+    # ========== Seleção de tabelas/views para sincronizar ==========
+    if st.session_state.get("exibir_selecao_tabelas", False):
+        st.header("Selecione as tabelas/views para sincronizar")
+        tabelas_disponiveis = obter_lista_tabelas_views_remotas()
+        if not tabelas_disponiveis:
+            st.warning("Nenhuma tabela remota encontrada. Confira os dados de conexão.")
+        else:
+            if "selecionadas_para_sync" not in st.session_state or not st.session_state["selecionadas_para_sync"]:
+                st.session_state["selecionadas_para_sync"] = []
+
+            select_all = st.button("Selecionar todas")
+            deselect_all = st.button("Desmarcar todas")
+
+            if select_all:
+                st.session_state["selecionadas_para_sync"] = tabelas_disponiveis
+            if deselect_all:
+                st.session_state["selecionadas_para_sync"] = []
+
+            selecionadas = st.multiselect(
+                "Tabelas/views disponíveis:",
+                tabelas_disponiveis,
+                default=st.session_state["selecionadas_para_sync"],
+                key="selecionadas_para_sync"
+            )
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Confirmar e sincronizar"):
+                    if selecionadas:
+                        sync_mysql_to_sqlite(selecionadas)
+                        novo_sync = datetime.now().isoformat()
+                        atualizar_usuario_campo(usuario["id"], "ultimo_sync", novo_sync)
+                        st.session_state["usuario"]["ultimo_sync"] = novo_sync
+                        st.success("Dados atualizados com sucesso!")
+                        st.session_state["ja_sincronizou"] = True
+                        st.session_state["exibir_selecao_tabelas"] = False
+                        st.rerun()
+                    else:
+                        st.warning("Selecione ao menos uma tabela para sincronizar.")
+            with col2:
+                if st.button("Voltar para dashboard"):
+                    st.session_state["exibir_selecao_tabelas"] = False
+                    st.rerun()
+        st.stop()
 
     # Sincronismo só na primeira entrada do dashboard ou via botão
     if not usuario["host"]:
@@ -306,53 +358,16 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
                     precisa_sync = True
 
             if precisa_sync:
-                with st.spinner("Sincronizando dados do banco..."):
-                    tabelas_disponiveis = obter_lista_tabelas_views_remotas()
-                    if tabelas_disponiveis:
-                        st.subheader("Selecione as tabelas/views para sincronizar:")
-                        tabelas_selecionadas = []
-                        for tb in tabelas_disponiveis:
-                            checked = st.checkbox(tb, key=f"tb_sync_{tb}", value=True)
-                            if checked:
-                                tabelas_selecionadas.append(tb)
-                        if st.button("Confirmar e sincronizar"):
-                            sync_mysql_to_sqlite(tabelas_selecionadas)
-                            novo_sync = datetime.now().isoformat()
-                            atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
-                            st.session_state["usuario"]["ultimo_sync"] = novo_sync
-                            st.success("Dados atualizados automaticamente!")
-                            st.session_state["ja_sincronizou"] = True
-                            st.rerun()
-                        st.stop()
-                    else:
-                        st.warning("Nenhuma tabela remota encontrada. Confira os dados de conexão.")
-                        st.stop()
+                st.session_state["exibir_selecao_tabelas"] = True
+                st.rerun()
             else:
                 st.info(f"Última sincronização: {ultimo_sync_str}")
             st.session_state["ja_sincronizou"] = True
 
-        # Botão manual de sincronismo (checkbox também, uma única coluna!)
+        # Botão manual de sincronismo
         if st.button("🔄 Sincronizar agora"):
-            tabelas_disponiveis = obter_lista_tabelas_views_remotas()
-            if tabelas_disponiveis:
-                st.subheader("Selecione as tabelas/views para sincronizar:")
-                tabelas_selecionadas = []
-                for tb in tabelas_disponiveis:
-                    checked = st.checkbox(tb, key=f"tb_sync_manual_{tb}", value=True)
-                    if checked:
-                        tabelas_selecionadas.append(tb)
-                if st.button("Confirmar e sincronizar (manual)"):
-                    sync_mysql_to_sqlite(tabelas_selecionadas)
-                    novo_sync = datetime.now().isoformat()
-                    atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
-                    st.session_state["usuario"]["ultimo_sync"] = novo_sync
-                    st.success("Dados atualizados manualmente!")
-                    st.session_state["ja_sincronizou"] = True
-                    st.rerun()
-                st.stop()
-            else:
-                st.warning("Nenhuma tabela remota encontrada. Confira os dados de conexão.")
-                st.stop()
+            st.session_state["exibir_selecao_tabelas"] = True
+            st.rerun()
 
         # Diagnóstico: tabelas no SQLite
         try:
@@ -382,4 +397,4 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
             pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
             submitted = st.form_submit_button("🧠 Consultar IA")
             if submitted and pergunta.strip():
-                executar_pergunta(pergunta, st.session_state["sqlite_path"])
+                executar_pergunta(pergunta, sqlite_path)
