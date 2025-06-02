@@ -54,16 +54,20 @@ def executar_pergunta(pergunta, sqlite_path):
         st.error(f"Estrutura dinâmica não carregada. {erro_estrutura or ''}\nTente sincronizar as tabelas primeiro.")
         return
 
-    # PROMPT FORTE
     prompt_base = (
-        "Você é um assistente de BI e análise de dados para sistemas empresariais. "
-        "Sempre responda utilizando SOMENTE as tabelas e colunas a seguir, que refletem o banco de dados sincronizado. "
-        "Nunca invente nomes de tabelas ou colunas, use apenas o que está abaixo. "
-        "Quando possível, responda com SQL (compatível com SQLite), sem comentários. "
-        "Após o SQL, explique em até 2 linhas o resultado da consulta, caso tenha dados. "
-        "Estrutura do banco:\n"
-        f"{estrutura}"
-    )
+    "Você é um assistente de BI e SQL. Responda SEMPRE baseado SOMENTE nas tabelas e colunas abaixo (NÃO invente NENHUM nome). "
+    "Quando perguntado sobre um indicador, siga SEMPRE esses passos:\n"
+    "1. Analise quais tabelas/colunas podem responder à pergunta (apenas da lista abaixo).\n"
+    "2. Monte uma consulta SQL exata, usando somente nomes das tabelas/colunas abaixo.\n"
+    "3. Não invente valores, datas, produtos, nem traduza nomes. Use tudo exatamente como listado.\n"
+    "4. Exiba a consulta SQL final em um bloco de código (SQL).\n"
+    "5. Depois do SQL, explique (em até 2 linhas) o que esse SQL retorna.\n"
+    "Se NÃO for possível responder usando as tabelas/colunas abaixo, diga: 'Não é possível responder com os dados disponíveis.'\n\n"
+    "Estrutura das tabelas disponíveis:\n"
+    f"{estrutura}"
+)
+
+    
 
     messages = [
         {"role": "system", "content": prompt_base},
