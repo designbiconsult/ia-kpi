@@ -2,7 +2,6 @@ import requests
 import streamlit as st
 import sqlite3
 import pandas as pd
-import json
 
 USE_LOCAL_OLLAMA = True  # True = IA local (Ollama), False = OpenRouter
 
@@ -26,6 +25,23 @@ def carregar_estrutura_dinamica(sqlite_path):
     except Exception as e:
         return None, f"Erro ao ler estrutura_dinamica: {e}"
 
+def extrair_sql(resposta_ia):
+    """
+    Tenta extrair o SQL da resposta da IA.
+    - Busca o primeiro bloco começando com SELECT (ignora explicações).
+    """
+    linhas = resposta_ia.splitlines()
+    sql_block = ""
+    in_sql = False
+    for l in linhas:
+        if l.strip().upper().startswith("SELECT"):
+            in_sql = True
+        if in_sql:
+            sql_block += l + "\n"
+        if in_sql and l.strip() == "":
+            break
+    return sql_block.strip()
+
 def executar_pergunta(pergunta, sqlite_path):
     st.markdown("#### 🤖 Resposta da IA")
 
@@ -38,10 +54,13 @@ def executar_pergunta(pergunta, sqlite_path):
         st.error(f"Estrutura dinâmica não carregada. {erro_estrutura or ''}\nTente sincronizar as tabelas primeiro.")
         return
 
+    # PROMPT FORTE
     prompt_base = (
-        "Você é um assistente de análise de dados. Responda SEMPRE com base apenas nas tabelas e colunas fornecidas abaixo.\n"
-        "Não invente nomes de tabelas ou colunas. Use sempre os nomes exatos. Se precisar montar uma consulta SQL, use os nomes informados.\n"
-        "Ao final, exiba o SQL gerado e responda o resultado da consulta (explique o que a consulta retorna).\n"
+        "Você é um assistente de BI e análise de dados para sistemas empresariais. "
+        "Sempre responda utilizando SOMENTE as tabelas e colunas a seguir, que refletem o banco de dados sincronizado. "
+        "Nunca invente nomes de tabelas ou colunas, use apenas o que está abaixo. "
+        "Quando possível, responda com SQL (compatível com SQLite), sem comentários. "
+        "Após o SQL, explique em até 2 linhas o resultado da consulta, caso tenha dados. "
         "Estrutura do banco:\n"
         f"{estrutura}"
     )
@@ -60,27 +79,14 @@ def executar_pergunta(pergunta, sqlite_path):
                     "messages": messages,
                     "stream": False
                 },
-                timeout=5000
+                timeout=120
             )
             if response.status_code == 200:
                 content = response.json()
                 ia_response = content.get("message", {}).get("content", "")
-                st.write("**SQL sugerido pela IA:**")
-                linhas = ia_response.splitlines()
-                sql_block = ""
-                in_sql = False
-                for l in linhas:
-                    if l.strip().upper().startswith("SELECT"):
-                        in_sql = True
-                    if in_sql:
-                        sql_block += l + "\n"
-                    if l.strip() == "" and in_sql:
-                        break
-                if sql_block:
-                    st.code(sql_block.strip(), language="sql")
-                st.success(ia_response)
             else:
                 st.error(f"Erro ao acessar IA local: {response.text}")
+                return
         else:
             headers = {
                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -89,27 +95,32 @@ def executar_pergunta(pergunta, sqlite_path):
             body = {
                 "model": OPENROUTER_MODEL,
                 "messages": messages,
-                "max_tokens": 800,
+                "max_tokens": 900,
                 "temperature": 0.2
             }
-            response = requests.post(OPENROUTER_API_URL, headers=headers, json=body, timeout=5000)
+            response = requests.post(OPENROUTER_API_URL, headers=headers, json=body, timeout=120)
             response.raise_for_status()
             result = response.json()
             ia_response = result["choices"][0]["message"]["content"]
-            st.write("**SQL sugerido pela IA:**")
-            linhas = ia_response.splitlines()
-            sql_block = ""
-            in_sql = False
-            for l in linhas:
-                if l.strip().upper().startswith("SELECT"):
-                    in_sql = True
-                if in_sql:
-                    sql_block += l + "\n"
-                if l.strip() == "" and in_sql:
-                    break
-            if sql_block:
-                st.code(sql_block.strip(), language="sql")
-            st.success(ia_response)
     except Exception as e:
-        st.error(f"Erro ao acessar IA local: {e}")
+        st.error(f"Erro ao acessar IA: {e}")
         st.exception(e)
+        return
+
+    # Extrai SQL e mostra
+    sql_sugerido = extrair_sql(ia_response)
+    if sql_sugerido:
+        st.write("**SQL sugerido pela IA:**")
+        st.code(sql_sugerido, language="sql")
+        # Tenta executar o SQL!
+        try:
+            df_result = pd.read_sql(sql_sugerido, sqlite3.connect(sqlite_path))
+            if not df_result.empty:
+                st.dataframe(df_result)
+            else:
+                st.info("Consulta SQL executada, mas não retornou resultados.")
+        except Exception as e:
+            st.error(f"Erro ao executar SQL gerado: {e}")
+    else:
+        st.warning("A IA não retornou um SQL válido. Resposta completa da IA:")
+        st.info(ia_response)
