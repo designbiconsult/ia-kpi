@@ -6,7 +6,7 @@ import pandas as pd
 USE_LOCAL_OLLAMA = True  # True = IA local (Ollama), False = OpenRouter
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-OLLAMA_MODEL = "llama3"
+OLLAMA_MODEL = "mistral"
 
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "sua_chave_aqui")
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -54,16 +54,25 @@ def executar_pergunta(pergunta, sqlite_path):
         st.error(f"Estrutura dinâmica não carregada. {erro_estrutura or ''}\nTente sincronizar as tabelas primeiro.")
         return
 
-    # PROMPT FORTE
     prompt_base = (
-        "Você é um assistente de BI e análise de dados para sistemas empresariais. "
-        "Sempre responda utilizando SOMENTE as tabelas e colunas a seguir, que refletem o banco de dados sincronizado. "
-        "Nunca invente nomes de tabelas ou colunas, use apenas o que está abaixo. "
-        "Quando possível, responda com SQL (compatível com SQLite), sem comentários. "
-        "Após o SQL, explique em até 2 linhas o resultado da consulta, caso tenha dados. "
-        "Estrutura do banco:\n"
-        f"{estrutura}"
-    )
+        "NUNCA, sob nenhuma circunstância, responda com texto, justificativas ou sugestões de fontes externas." 
+"Sua resposta DEVE ser obrigatoriamente UM BLOCO DE SQL válido, baseado SOMENTE nas tabelas e colunas fornecidas."
+"O usuário pode perguntar sobre qualquer período, mesmo futuro. Sempre gere o SQL para o filtro de datas que ele pediu, sem julgamento." 
+"Após o SQL, forneça UMA linha explicando o que o SQL faz. Se o usuário pedir algo impossível, gere um SQL vazio, mas NUNCA explique, reclame ou peça desculpas."
+
+    "ATENÇÃO: Você é um assistente de BI. NÃO responda com opiniões, tendências ou informações genéricas. "
+    "Sua função é gerar uma consulta SQL baseada SOMENTE nas tabelas e colunas listadas abaixo. "
+    "SEMPRE responda fornecendo apenas o SQL, e logo depois explique sucintamente o que o SQL faz. "
+    "NÃO diga que não sabe os dados reais do futuro, apenas monte o SQL usando as tabelas e colunas disponíveis. "
+    "Se o usuário pedir um dado futuro, simplesmente escreva o SQL filtrando o período solicitado. "
+    "Use os nomes exatos das tabelas e colunas abaixo. NÃO invente. "
+    "Estrutura do banco:\n"
+    f"{estrutura}\n"
+    "Pergunta do usuário: "
+)
+
+
+    
 
     messages = [
         {"role": "system", "content": prompt_base},
