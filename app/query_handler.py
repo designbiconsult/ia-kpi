@@ -55,6 +55,11 @@ def executar_pergunta(pergunta, sqlite_path):
         return
 
     prompt_base = (
+        "NUNCA, sob nenhuma circunstância, responda com texto, justificativas ou sugestões de fontes externas." 
+"Sua resposta DEVE ser obrigatoriamente UM BLOCO DE SQL válido, baseado SOMENTE nas tabelas e colunas fornecidas."
+"O usuário pode perguntar sobre qualquer período, mesmo futuro. Sempre gere o SQL para o filtro de datas que ele pediu, sem julgamento." 
+"Após o SQL, forneça UMA linha explicando o que o SQL faz. Se o usuário pedir algo impossível, gere um SQL vazio, mas NUNCA explique, reclame ou peça desculpas."
+
     "ATENÇÃO: Você é um assistente de BI. NÃO responda com opiniões, tendências ou informações genéricas. "
     "Sua função é gerar uma consulta SQL baseada SOMENTE nas tabelas e colunas listadas abaixo. "
     "SEMPRE responda fornecendo apenas o SQL, e logo depois explique sucintamente o que o SQL faz. "
