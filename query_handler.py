@@ -4,14 +4,11 @@ import sqlite3
 import pandas as pd
 import json
 
-# Configura se vai usar IA local (Ollama) ou OpenRouter:
-USE_LOCAL_OLLAMA = True  # True = usa IA local, False = OpenRouter
+USE_LOCAL_OLLAMA = True  # True = IA local (Ollama), False = OpenRouter
 
-# Configurações do Ollama local
 OLLAMA_URL = "http://localhost:11434/api/chat"
 OLLAMA_MODEL = "llama3"
 
-# Configurações do OpenRouter
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "sua_chave_aqui")
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
@@ -41,7 +38,6 @@ def executar_pergunta(pergunta, sqlite_path):
         st.error(f"Estrutura dinâmica não carregada. {erro_estrutura or ''}\nTente sincronizar as tabelas primeiro.")
         return
 
-    # PROMPT que "obriga" a IA a usar apenas as tabelas/colunas fornecidas:
     prompt_base = (
         "Você é um assistente de análise de dados. Responda SEMPRE com base apenas nas tabelas e colunas fornecidas abaixo.\n"
         "Não invente nomes de tabelas ou colunas. Use sempre os nomes exatos. Se precisar montar uma consulta SQL, use os nomes informados.\n"
@@ -57,7 +53,6 @@ def executar_pergunta(pergunta, sqlite_path):
 
     try:
         if USE_LOCAL_OLLAMA:
-            # ============ IA LOCAL (OLLAMA) ============
             response = requests.post(
                 OLLAMA_URL,
                 json={
@@ -69,10 +64,8 @@ def executar_pergunta(pergunta, sqlite_path):
             )
             if response.status_code == 200:
                 content = response.json()
-                # Pega só o texto da resposta da IA:
                 ia_response = content.get("message", {}).get("content", "")
                 st.write("**SQL sugerido pela IA:**")
-                # Tenta extrair SQL de forma "manual" (ajustar caso precise)
                 linhas = ia_response.splitlines()
                 sql_block = ""
                 in_sql = False
@@ -89,7 +82,6 @@ def executar_pergunta(pergunta, sqlite_path):
             else:
                 st.error(f"Erro ao acessar IA local: {response.text}")
         else:
-            # ============ OPENROUTER ============
             headers = {
                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
                 "Content-Type": "application/json"
@@ -100,7 +92,7 @@ def executar_pergunta(pergunta, sqlite_path):
                 "max_tokens": 800,
                 "temperature": 0.2
             }
-            response = requests.post(OPENROUTER_API_URL, headers=headers, json=body, timeout=60)
+            response = requests.post(OPENROUTER_API_URL, headers=headers, json=body, timeout=5000)
             response.raise_for_status()
             result = response.json()
             ia_response = result["choices"][0]["message"]["content"]

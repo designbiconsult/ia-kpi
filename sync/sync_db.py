@@ -34,12 +34,11 @@ def salvar_estrutura_dinamica(entidades, conn_sqlite):
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS estrutura_dinamica (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sistema_id TEXT,
-            nome_tabela TEXT,
-            nome_coluna TEXT,
-            tipo_dado TEXT,
-            valor_exemplo TEXT,
-            descricao_gerada TEXT
+            tabela TEXT,
+            coluna TEXT,
+            tipo TEXT,
+            exemplo TEXT,
+            descricao TEXT
         )
     ''')
     conn_sqlite.commit()
@@ -54,17 +53,9 @@ def salvar_estrutura_dinamica(entidades, conn_sqlite):
                 tipo = str(df[coluna].dtype)
                 descricao = gerar_descricao_semantica(tabela, coluna)
                 cursor.execute('''
-                    INSERT INTO estrutura_dinamica 
-                    (sistema_id, nome_tabela, nome_coluna, tipo_dado, valor_exemplo, descricao_gerada)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (
-                    "local",           # ou outra identificação do sistema/banco
-                    tabela, 
-                    coluna, 
-                    tipo, 
-                    exemplo, 
-                    descricao
-                ))
+                    INSERT INTO estrutura_dinamica (tabela, coluna, tipo, exemplo, descricao)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (tabela, coluna, tipo, exemplo, descricao))
         except Exception as e:
             print(f"Erro ao processar tabela {tabela}: {e}")
     conn_sqlite.commit()
@@ -108,3 +99,14 @@ def sync_mysql_to_sqlite(tabelas_sync):
         st.success("✅ Sincronização concluída com sucesso.")
     except Exception as e:
         st.error(f"❌ Erro ao sincronizar: {e}")
+
+def excluir_tabelas_sqlite(sqlite_path, tabelas_excluir):
+    try:
+        with sqlite3.connect(sqlite_path, timeout=10) as conn:
+            c = conn.cursor()
+            for tabela in tabelas_excluir:
+                c.execute(f"DROP TABLE IF EXISTS `{tabela}`")
+            conn.commit()
+        st.success(f"Tabela(s) excluída(s) com sucesso: {', '.join(tabelas_excluir)}")
+    except Exception as e:
+        st.error(f"Erro ao excluir tabela(s): {e}")
