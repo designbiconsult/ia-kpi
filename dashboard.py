@@ -111,7 +111,7 @@ def detectar_relacionamentos_automaticos(sqlite_path):
 
 def aprovar_relacionamentos(sqlite_path):
     garantir_tabela_relacionamentos(sqlite_path)
-    st.subheader("Relacionamentos sugeridos entre tabelas (estilo Power BI)")
+    st.subheader("Relacionamentos sugeridos entre tabelas")
     sugestoes = detectar_relacionamentos_automaticos(sqlite_path)
     with sqlite3.connect(sqlite_path) as conn:
         existentes = pd.read_sql("SELECT * FROM relacionamentos WHERE ativo=1", conn)
