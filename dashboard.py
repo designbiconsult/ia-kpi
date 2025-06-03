@@ -11,7 +11,7 @@ DB_PATH = "data/database.db"
 os.makedirs("data", exist_ok=True)
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
-# Criação da tabela de usuários
+# Criação das tabelas necessárias
 with sqlite3.connect(DB_PATH, timeout=10) as conn:
     c = conn.cursor()
     c.execute('''
@@ -38,8 +38,12 @@ with sqlite3.connect(DB_PATH, timeout=10) as conn:
             tabela TEXT,
             coluna_valor TEXT,
             coluna_data TEXT,
+            coluna_tipo TEXT,
+            valores_entrada TEXT,
+            valores_saida TEXT,
             coluna_filtro TEXT,
-            valor_filtro TEXT
+            valor_filtro TEXT,
+            formula_sql TEXT -- Armazena a query customizada, se aplicável
         )
     ''')
     conn.commit()
@@ -78,34 +82,97 @@ def wizard_mapeamento_indicadores(usuario_id, setor, indicador, sqlite_path, DB_
 
     coluna_valor = st.selectbox("Coluna de valor:", colunas, key=f"col_val_{setor}_{indicador}")
     coluna_data = st.selectbox("Coluna de data:", colunas, key=f"col_dt_{setor}_{indicador}")
-    coluna_filtro = st.selectbox("Coluna de filtro (opcional):", ["Nenhum"] + colunas, key=f"col_filt_{setor}_{indicador}")
-    valor_filtro = ""
-    if coluna_filtro != "Nenhum":
-        valor_filtro = st.text_input("Valor do filtro (ex: RECEBER, PAGAR)", key=f"val_filt_{setor}_{indicador}")
+
+    # Se for Saldo em Caixa, mostrar opções avançadas
+    coluna_tipo = ""
+    valores_entrada = ""
+    valores_saida = ""
+    formula_sql = ""
+    if indicador == "Saldo em Caixa":
+        coluna_tipo = st.selectbox("Coluna do tipo de movimento (entrada/saída):", colunas, key=f"col_tipo_{setor}_{indicador}")
+        valores_entrada = st.text_input("Valores de ENTRADA (separados por vírgula, ex: RECEBER,ENTRADA):", key=f"val_entrada_{setor}_{indicador}")
+        valores_saida = st.text_input("Valores de SAÍDA (separados por vírgula, ex: PAGAR,SAÍDA):", key=f"val_saida_{setor}_{indicador}")
+        # Filtro opcional
+        coluna_filtro = st.selectbox("Coluna de filtro (opcional, ex: BANCO, COFRE):", ["Nenhum"] + colunas, key=f"col_filt_{setor}_{indicador}")
+        valor_filtro = ""
+        if coluna_filtro != "Nenhum":
+            valor_filtro = st.text_input("Valor do filtro (opcional, ex: BANCO1):", key=f"val_filt_{setor}_{indicador}")
+
+        # SQL será montado automaticamente, mas pode salvar customizado se quiser depois
+        formula_sql = ""  # futuro: permitir edição avançada
+
+    else:
+        coluna_tipo = st.selectbox("Coluna do tipo de movimento (opcional):", ["Nenhum"] + colunas, key=f"col_tipo_{setor}_{indicador}")
+        valores_entrada = st.text_input("Valores para considerar (opcional, ex: RECEBER):", key=f"val_entrada_{setor}_{indicador}")
+        valores_saida = ""
+        coluna_filtro = st.selectbox("Coluna de filtro (opcional):", ["Nenhum"] + colunas, key=f"col_filt_{setor}_{indicador}")
+        valor_filtro = ""
+        if coluna_filtro != "Nenhum":
+            valor_filtro = st.text_input("Valor do filtro (opcional):", key=f"val_filt_{setor}_{indicador}")
+
+        formula_sql = ""  # futuro: permitir customização livre
 
     if st.button("Salvar indicador", key=f"save_{setor}_{indicador}"):
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute(
-                "INSERT INTO indicador_mapeamento (usuario_id, setor, indicador, tabela, coluna_valor, coluna_data, coluna_filtro, valor_filtro) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (usuario_id, setor, indicador, tabela, coluna_valor, coluna_data, coluna_filtro if coluna_filtro != "Nenhum" else None, valor_filtro or None)
+                "INSERT INTO indicador_mapeamento (usuario_id, setor, indicador, tabela, coluna_valor, coluna_data, coluna_tipo, valores_entrada, valores_saida, coluna_filtro, valor_filtro, formula_sql) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (usuario_id, setor, indicador, tabela, coluna_valor, coluna_data, 
+                 coluna_tipo if coluna_tipo != "Nenhum" else None,
+                 valores_entrada, valores_saida, 
+                 coluna_filtro if coluna_filtro != "Nenhum" else None, valor_filtro or None,
+                 formula_sql)
             )
             conn.commit()
         st.success("Indicador configurado!")
-        st.rerun()
+        st.experimental_rerun()
 
 def carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite_path):
     with sqlite3.connect(sqlite_path) as conn:
         row = conn.execute(
-            "SELECT tabela, coluna_valor, coluna_data, coluna_filtro, valor_filtro FROM indicador_mapeamento WHERE usuario_id=? AND setor=? AND indicador=?",
+            "SELECT tabela, coluna_valor, coluna_data, coluna_tipo, valores_entrada, valores_saida, coluna_filtro, valor_filtro, formula_sql FROM indicador_mapeamento WHERE usuario_id=? AND setor=? AND indicador=?",
             (usuario_id, setor, indicador)
         ).fetchone()
     if not row:
         st.warning(f"Mapeamento não encontrado para {setor} - {indicador}.")
         return "-"
-    tabela, col_valor, col_data, col_filtro, val_filtro = row
-    sql = f"SELECT SUM({col_valor}) FROM {tabela} WHERE strftime('%Y-%m', {col_data}) = '{periodo}'"
-    if col_filtro and val_filtro:
-        sql += f" AND {col_filtro} = '{val_filtro}'"
+    tabela, col_valor, col_data, col_tipo, vals_entrada, vals_saida, col_filtro, val_filtro, formula_sql = row
+
+    # Se houver fórmula customizada salva, execute
+    if formula_sql:
+        sql = formula_sql
+    elif indicador == "Saldo em Caixa":
+        # Monta o SQL para saldo: entradas - saídas
+        condicoes = [f"strftime('%Y-%m', {col_data}) <= '{periodo}'"]
+        if col_filtro and val_filtro:
+            condicoes.append(f"{col_filtro} = '{val_filtro}'")
+        entrada_list = [v.strip() for v in (vals_entrada or "").split(",") if v.strip()]
+        saida_list = [v.strip() for v in (vals_saida or "").split(",") if v.strip()]
+        cases = []
+        if entrada_list:
+            entries = ", ".join([f"'{v}'" for v in entrada_list])
+            cases.append(f"WHEN {col_tipo} IN ({entries}) THEN {col_valor}")
+        if saida_list:
+            exits = ", ".join([f"'{v}'" for v in saida_list])
+            cases.append(f"WHEN {col_tipo} IN ({exits}) THEN -1*{col_valor}")
+        # Default (ignora outros tipos)
+        cases.append("ELSE 0")
+        sql = f"""
+            SELECT SUM(CASE
+                {' '.join(cases)}
+            END) as saldo
+            FROM {tabela}
+            WHERE {' AND '.join(condicoes)}
+        """
+    else:
+        # Indicador simples: soma condicionada ou não
+        condicoes = [f"strftime('%Y-%m', {col_data}) = '{periodo}'"]
+        if col_tipo and vals_entrada:
+            entradas = ", ".join([f"'{v.strip()}'" for v in vals_entrada.split(",") if v.strip()])
+            condicoes.append(f"{col_tipo} IN ({entradas})")
+        if col_filtro and val_filtro:
+            condicoes.append(f"{col_filtro} = '{val_filtro}'")
+        sql = f"SELECT SUM({col_valor}) FROM {tabela} WHERE {' AND '.join(condicoes)}"
+
     try:
         with sqlite3.connect(sqlite_path) as conn:
             df = pd.read_sql(sql, conn)
@@ -171,7 +238,7 @@ if st.session_state.get("logado"):
                 if st.button("Excluir selecionadas"):
                     if tabelas_excluir:
                         excluir_tabelas_sqlite(sqlite_path, tabelas_excluir)
-                        st.rerun()
+                        st.experimental_rerun()
                     else:
                         st.info("Nenhuma tabela marcada para exclusão.")
             else:
