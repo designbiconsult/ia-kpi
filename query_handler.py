@@ -6,7 +6,7 @@ import pandas as pd
 USE_LOCAL_OLLAMA = True  # True = IA local (Ollama), False = OpenRouter
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-OLLAMA_MODEL = "sqlcoder:7b"  # <- Modelo correto aqui
+OLLAMA_MODEL = "sqlcoder:15b" # <- Modelo correto aqui
 
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "sua_chave_aqui")
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
