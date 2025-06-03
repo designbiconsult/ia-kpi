@@ -381,7 +381,57 @@ elif st.session_state.get("pagina") == "conexao":
         st.session_state["pagina"] = "dashboard"
         st.rerun()
 
-# DASHBOARD PRINCIPAL COM BOTÃO SINCRONIZAR AGORA
+# FLUXO DE SINCRONIZAÇÃO MANUAL
+elif st.session_state.get("pagina") == "dashboard_sync":
+    usuario = st.session_state["usuario"]
+    id_usuario = usuario["id"]
+    sqlite_path = st.session_state["sqlite_path"]
+    tabelas_disponiveis = obter_lista_tabelas_views_remotas()
+    st.subheader("Selecione as tabelas/views para sincronizar:")
+    if not st.session_state["tabelas_marcadas"] or set(st.session_state["tabelas_marcadas"].keys()) != set(tabelas_disponiveis):
+        st.session_state["tabelas_marcadas"] = {tb: False for tb in tabelas_disponiveis}
+
+    col1, col2 = st.columns([1,1])
+    with col1:
+        if st.button("Selecionar todas"):
+            for tb in tabelas_disponiveis:
+                st.session_state["tabelas_marcadas"][tb] = True
+    with col2:
+        if st.button("Desmarcar todas"):
+            for tb in tabelas_disponiveis:
+                st.session_state["tabelas_marcadas"][tb] = False
+
+    # Checkboxes individuais
+    for tb in tabelas_disponiveis:
+        st.session_state["tabelas_marcadas"][tb] = st.checkbox(
+            tb,
+            value=st.session_state["tabelas_marcadas"][tb],
+            key=f"chk_{tb}"
+        )
+    tabelas_sync = [tb for tb, marcado in st.session_state["tabelas_marcadas"].items() if marcado]
+
+    bcol1, bcol2 = st.columns([1,1])
+    with bcol1:
+        if st.button("Confirmar e sincronizar"):
+            if tabelas_sync:
+                sync_mysql_to_sqlite(tabelas_sync)
+                novo_sync = datetime.now().isoformat()
+                atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
+                st.session_state["usuario"]["ultimo_sync"] = novo_sync
+                st.success("Dados atualizados automaticamente!")
+                st.session_state["ja_sincronizou"] = True
+                st.session_state["pagina"] = "dashboard"
+                st.rerun()
+            else:
+                st.warning("Selecione ao menos uma tabela.")
+    with bcol2:
+        if st.button("Pular sincronização"):
+            st.session_state["ja_sincronizou"] = True
+            st.session_state["pagina"] = "dashboard"
+            st.rerun()
+    st.stop()
+
+# DASHBOARD PRINCIPAL
 elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
@@ -394,9 +444,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
 
     # Botão manual de sincronismo
     if st.button("🔄 Sincronizar agora"):
-        tabelas_disponiveis = obter_lista_tabelas_views_remotas()
-        st.session_state["tabelas_marcadas"] = {tb: False for tb in tabelas_disponiveis}
-        st.session_state["ja_sincronizou"] = False
+        st.session_state["pagina"] = "dashboard_sync"
         st.rerun()
 
     setores = ["Financeiro", "Comercial", "Produção"]
