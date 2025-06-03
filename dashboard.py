@@ -11,6 +11,10 @@ DB_PATH = "data/database.db"
 os.makedirs("data", exist_ok=True)
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
+#########################
+# BANCO: CRIAÇÕES FIXAS #
+#########################
+
 def garantir_tabela_indicador_mapeamento(path):
     with sqlite3.connect(path) as conn:
         conn.execute('''
@@ -32,7 +36,27 @@ def garantir_tabela_indicador_mapeamento(path):
         ''')
         conn.commit()
 
+def garantir_tabela_relacionamentos(path):
+    with sqlite3.connect(path) as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS relacionamentos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tabela_origem TEXT,
+                coluna_origem TEXT,
+                tabela_destino TEXT,
+                coluna_destino TEXT,
+                tipo_relacionamento TEXT, -- 1:1, 1:N, N:1, N:N
+                ativo INTEGER DEFAULT 1
+            )
+        ''')
+        conn.commit()
+
 garantir_tabela_indicador_mapeamento(DB_PATH)
+garantir_tabela_relacionamentos(DB_PATH)
+
+###############################
+# AUTENTICAÇÃO E SESSION BASE #
+###############################
 
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
@@ -54,6 +78,80 @@ def atualizar_usuario_campo(id_usuario, campo, valor):
         c = conn.cursor()
         c.execute(f"UPDATE usuarios SET {campo} = ? WHERE id = ?", (valor, id_usuario))
         conn.commit()
+
+###############################
+# RELACIONAMENTOS AUTOMÁTICOS #
+###############################
+
+def detectar_relacionamentos_automaticos(sqlite_path):
+    with sqlite3.connect(sqlite_path) as conn:
+        tabelas = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", conn)["name"].tolist()
+        sugestoes = []
+        for i, tabela1 in enumerate(tabelas):
+            colunas1 = pd.read_sql(f"PRAGMA table_info({tabela1})", conn)[["name", "type"]]
+            for tabela2 in tabelas[i+1:]:
+                colunas2 = pd.read_sql(f"PRAGMA table_info({tabela2})", conn)[["name", "type"]]
+                colunas_comuns = pd.merge(colunas1, colunas2, on=["name", "type"])
+                for _, row in colunas_comuns.iterrows():
+                    col = row["name"]
+                    # Amostra para sugerir join real
+                    df1 = pd.read_sql(f"SELECT DISTINCT {col} FROM {tabela1} LIMIT 10", conn)
+                    df2 = pd.read_sql(f"SELECT DISTINCT {col} FROM {tabela2} LIMIT 10", conn)
+                    inter = set(df1[col]) & set(df2[col])
+                    if not df1.empty and not df2.empty and len(inter) > 0:
+                        # Sugere tipo (padrão: N:N, pode ajustar no painel)
+                        sugestoes.append({
+                            "tabela_origem": tabela1,
+                            "coluna_origem": col,
+                            "tabela_destino": tabela2,
+                            "coluna_destino": col,
+                            "tipo_relacionamento": "N:N" # default, admin pode trocar!
+                        })
+    return sugestoes
+
+def aprovar_relacionamentos(sqlite_path):
+    garantir_tabela_relacionamentos(sqlite_path)
+    st.subheader("Relacionamentos sugeridos entre tabelas (estilo Power BI)")
+    sugestoes = detectar_relacionamentos_automaticos(sqlite_path)
+    with sqlite3.connect(sqlite_path) as conn:
+        existentes = pd.read_sql("SELECT * FROM relacionamentos WHERE ativo=1", conn)
+    for i, s in enumerate(sugestoes):
+        ja_existe = (
+            (existentes['tabela_origem'] == s['tabela_origem']) & 
+            (existentes['coluna_origem'] == s['coluna_origem']) &
+            (existentes['tabela_destino'] == s['tabela_destino']) &
+            (existentes['coluna_destino'] == s['coluna_destino'])
+        ).any()
+        if ja_existe:
+            st.success(f"Relacionamento já ativo: {s['tabela_origem']}.{s['coluna_origem']} ↔ {s['tabela_destino']}.{s['coluna_destino']}")
+            continue
+        with st.form(f"form_rel_{i}"):
+            st.write(f"Relacionamento sugerido: {s['tabela_origem']}.{s['coluna_origem']} ↔ {s['tabela_destino']}.{s['coluna_destino']}")
+            tipo = st.selectbox("Tipo do relacionamento", ["1:1", "1:N", "N:1", "N:N"], index=3, key=f"tipo_rel_{i}")
+            aprovar = st.form_submit_button("Aprovar relacionamento")
+            if aprovar:
+                with sqlite3.connect(sqlite_path) as conn:
+                    conn.execute('''
+                        INSERT INTO relacionamentos (tabela_origem, coluna_origem, tabela_destino, coluna_destino, tipo_relacionamento, ativo)
+                        VALUES (?, ?, ?, ?, ?, 1)
+                    ''', (s['tabela_origem'], s['coluna_origem'], s['tabela_destino'], s['coluna_destino'], tipo))
+                    conn.commit()
+                st.success("Relacionamento aprovado e salvo!")
+                st.experimental_rerun()
+
+def montar_relacionamentos_prompt(sqlite_path):
+    with sqlite3.connect(sqlite_path) as conn:
+        rels = pd.read_sql("SELECT * FROM relacionamentos WHERE ativo=1", conn)
+    if rels.empty:
+        return ""
+    prompt = "\nRelacionamentos disponíveis:\n"
+    for _, r in rels.iterrows():
+        prompt += f"- {r['tabela_origem']}.{r['coluna_origem']} {r['tipo_relacionamento']} {r['tabela_destino']}.{r['coluna_destino']}\n"
+    return prompt
+
+###############################
+# INDICADORES E WIZARD        #
+###############################
 
 def wizard_mapeamento_indicadores(usuario_id, setor, indicador, sqlite_path, DB_PATH):
     garantir_tabela_indicador_mapeamento(sqlite_path)
@@ -106,7 +204,7 @@ def wizard_mapeamento_indicadores(usuario_id, setor, indicador, sqlite_path, DB_
             )
             conn.commit()
         st.success("Indicador configurado!")
-        st.rerun()
+        st.experimental_rerun()
 
 def carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite_path, DB_PATH):
     garantir_tabela_indicador_mapeamento(sqlite_path)
@@ -182,6 +280,10 @@ def excluir_tabelas_sqlite(sqlite_path, tabelas_excluir):
     except Exception as e:
         st.error(f"Erro ao excluir tabela(s): {e}")
 
+###################################
+# INTERFACE                       #
+###################################
+
 if st.session_state.get("logado"):
     with st.sidebar:
         st.markdown("---")
@@ -194,6 +296,9 @@ if st.session_state.get("logado"):
             st.session_state["ja_sincronizou"] = False
             st.rerun()
         st.markdown("---")
+        if st.button("🔗 Configurar relacionamentos (admin)"):
+            st.session_state["pagina"] = "relacionamentos"
+            st.rerun()
         st.subheader("Excluir tabelas locais:")
         sqlite_path = st.session_state.get("sqlite_path", None)
         if sqlite_path and os.path.exists(sqlite_path):
@@ -207,7 +312,7 @@ if st.session_state.get("logado"):
                 if st.button("Excluir selecionadas"):
                     if tabelas_excluir:
                         excluir_tabelas_sqlite(sqlite_path, tabelas_excluir)
-                        st.rerun()
+                        st.experimental_rerun()
                     else:
                         st.info("Nenhuma tabela marcada para exclusão.")
             else:
@@ -242,12 +347,12 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
             st.session_state["mysql_database"] = usuario[8]
             st.session_state["sqlite_path"] = f"data/cliente_{usuario[0]}.db"
             garantir_tabela_indicador_mapeamento(st.session_state["sqlite_path"])
+            garantir_tabela_relacionamentos(st.session_state["sqlite_path"])
             st.session_state["pagina"] = "dashboard"
             st.session_state["ja_sincronizou"] = False
             st.rerun()
         else:
             st.error("Credenciais inválidas.")
-
     st.markdown("---")
     st.markdown("Ainda não possui cadastro?")
     if st.button("👉 Cadastre-se aqui"):
@@ -280,6 +385,14 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
                         st.error("Este email já está cadastrado.")
     if st.button("⬅️ Voltar para Login"):
         st.session_state["pagina"] = "login"
+        st.rerun()
+
+elif st.session_state.get("pagina") == "relacionamentos":
+    st.title("🔗 Aprovar relacionamentos entre tabelas (admin)")
+    aprovar_relacionamentos(st.session_state["sqlite_path"])
+    st.markdown("---")
+    if st.button("⬅️ Voltar"):
+        st.session_state["pagina"] = "dashboard"
         st.rerun()
 
 elif st.session_state.get("pagina") == "conexao":
@@ -315,7 +428,6 @@ elif st.session_state.get("pagina") == "conexao":
             st.session_state["mysql_password"] = senha_banco
             st.session_state["mysql_database"] = schema
             st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
-            garantir_tabela_indicador_mapeamento(st.session_state["sqlite_path"])
             st.session_state["ja_sincronizou"] = False
             st.success("Conexão salva com sucesso!")
             st.session_state["pagina"] = "dashboard"
@@ -328,9 +440,8 @@ elif st.session_state.get("pagina") == "dashboard_sync":
     usuario = st.session_state["usuario"]
     id_usuario = usuario["id"]
     sqlite_path = st.session_state["sqlite_path"]
-    garantir_tabela_indicador_mapeamento(sqlite_path)
     tabelas_disponiveis = obter_lista_tabelas_views_remotas()
-    st.subheader("Selecione as tabelas/views para sincronizar:")
+    st.title("Sincronizar tabelas/views do banco")
     if not st.session_state["tabelas_marcadas"] or set(st.session_state["tabelas_marcadas"].keys()) != set(tabelas_disponiveis):
         st.session_state["tabelas_marcadas"] = {tb: False for tb in tabelas_disponiveis}
     col1, col2 = st.columns([1,1])
@@ -381,6 +492,7 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
     garantir_tabela_indicador_mapeamento(st.session_state["sqlite_path"])
+    garantir_tabela_relacionamentos(st.session_state["sqlite_path"])
     if st.button("🔄 Sincronizar agora"):
         st.session_state["pagina"] = "dashboard_sync"
         st.rerun()
