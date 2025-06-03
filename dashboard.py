@@ -53,10 +53,6 @@ def atualizar_usuario_campo(id_usuario, campo, valor):
         conn.commit()
 
 def localizar_coluna(sqlite_path, palavras_chave, preferencia_tipo=None):
-    """
-    Busca na estrutura_dinamica a primeira coluna que bate com as palavras-chave na descrição ou nome.
-    Retorna (tabela, coluna), ou (None, None) se não achar.
-    """
     try:
         query = "SELECT tabela, coluna, tipo, descricao FROM estrutura_dinamica"
         df = pd.read_sql(query, sqlite3.connect(sqlite_path))
@@ -86,11 +82,9 @@ def carregar_indicadores_financeiro(sqlite_path):
     st.subheader("📊 Indicadores Financeiros")
     col1, col2, col3 = st.columns(3)
     if st.session_state["ja_sincronizou"]:
-        # Saldos em caixa
         tb_caixa, col_caixa = localizar_coluna(sqlite_path, ["caixa", "cash", "saldo", "balance"], "REAL")
         saldo_caixa = get_valor_query(sqlite_path, f"SELECT SUM({col_caixa}) FROM {tb_caixa}" if tb_caixa and col_caixa else "", "-")
 
-        # Receitas do mês
         tb_receita, col_receita = localizar_coluna(sqlite_path, ["receita", "recebimento", "income", "entrada"], "REAL")
         col_data_receita = localizar_coluna(sqlite_path, ["data", "competencia", "emissao", "entrada", "mes"], "TEXT")[1]
         receitas_mes = "-"
@@ -101,7 +95,6 @@ def carregar_indicadores_financeiro(sqlite_path):
             """
             receitas_mes = get_valor_query(sqlite_path, query, "-")
 
-        # Despesas do mês
         tb_despesa, col_despesa = localizar_coluna(sqlite_path, ["despesa", "pagamento", "expense", "saida"], "REAL")
         col_data_despesa = localizar_coluna(sqlite_path, ["data", "competencia", "emissao", "pagamento", "mes"], "TEXT")[1]
         despesas_mes = "-"
@@ -125,7 +118,6 @@ def carregar_indicadores_comercial(sqlite_path):
     st.subheader("📊 Indicadores Comerciais")
     col1, col2, col3 = st.columns(3)
     if st.session_state["ja_sincronizou"]:
-        # Vendas no mês
         tb_venda, col_venda = localizar_coluna(sqlite_path, ["venda", "sales", "total", "valor"], "REAL")
         col_data_venda = localizar_coluna(sqlite_path, ["data", "emissao", "pedido", "mes"], "TEXT")[1]
         vendas_mes = "-"
@@ -136,7 +128,6 @@ def carregar_indicadores_comercial(sqlite_path):
             """
             vendas_mes = get_valor_query(sqlite_path, query, "-")
 
-        # Clientes ativos no mês
         tb_cliente, col_cliente = localizar_coluna(sqlite_path, ["cliente", "customer", "id_cliente"], "INTEGER")
         col_data_cliente = localizar_coluna(sqlite_path, ["data", "emissao", "pedido", "mes"], "TEXT")[1]
         clientes_ativos = "-"
@@ -147,7 +138,6 @@ def carregar_indicadores_comercial(sqlite_path):
             """
             clientes_ativos = get_valor_query(sqlite_path, query, "-")
 
-        # Novos leads no mês
         tb_lead, col_lead = localizar_coluna(sqlite_path, ["lead", "prospec", "contato", "cadastro"], "INTEGER")
         col_data_lead = localizar_coluna(sqlite_path, ["data", "cadastro", "entrada", "mes"], "TEXT")[1]
         novos_leads = "-"
@@ -345,7 +335,6 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
                         st.rerun()
                     except sqlite3.IntegrityError:
                         st.error("Este email já está cadastrado.")
-    # Botão voltar para login
     if st.button("⬅️ Voltar para Login"):
         st.session_state["pagina"] = "login"
         st.rerun()
@@ -392,7 +381,7 @@ elif st.session_state.get("pagina") == "conexao":
         st.session_state["pagina"] = "dashboard"
         st.rerun()
 
-# DASHBOARD PRINCIPAL COM SETORES E BUSCA DINÂMICA NO SQLITE
+# DASHBOARD PRINCIPAL COM BOTÃO SINCRONIZAR AGORA
 elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
@@ -402,6 +391,13 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_password"] = usuario["senha_banco"]
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
+
+    # Botão manual de sincronismo
+    if st.button("🔄 Sincronizar agora"):
+        tabelas_disponiveis = obter_lista_tabelas_views_remotas()
+        st.session_state["tabelas_marcadas"] = {tb: False for tb in tabelas_disponiveis}
+        st.session_state["ja_sincronizou"] = False
+        st.rerun()
 
     setores = ["Financeiro", "Comercial", "Produção"]
     if "setor_ativo" not in st.session_state:
