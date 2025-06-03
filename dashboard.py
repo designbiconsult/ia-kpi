@@ -11,7 +11,6 @@ DB_PATH = "data/database.db"
 os.makedirs("data", exist_ok=True)
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
-# --- Função universal para garantir a existência da tabela em qualquer banco ---
 def garantir_tabela_indicador_mapeamento(path):
     with sqlite3.connect(path) as conn:
         conn.execute('''
@@ -33,7 +32,6 @@ def garantir_tabela_indicador_mapeamento(path):
         ''')
         conn.commit()
 
-# --- Sempre garanta no banco global ---
 garantir_tabela_indicador_mapeamento(DB_PATH)
 
 if "logado" not in st.session_state:
@@ -100,9 +98,9 @@ def wizard_mapeamento_indicadores(usuario_id, setor, indicador, sqlite_path, DB_
         with sqlite3.connect(sqlite_path) as conn:
             conn.execute(
                 "INSERT INTO indicador_mapeamento (usuario_id, setor, indicador, tabela, coluna_valor, coluna_data, coluna_tipo, valores_entrada, valores_saida, coluna_filtro, valor_filtro, formula_sql) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (usuario_id, setor, indicador, tabela, coluna_valor, coluna_data, 
+                (usuario_id, setor, indicador, tabela, coluna_valor, coluna_data,
                  coluna_tipo if coluna_tipo != "Nenhum" else None,
-                 valores_entrada, valores_saida, 
+                 valores_entrada, valores_saida,
                  coluna_filtro if coluna_filtro != "Nenhum" else None, valor_filtro or None,
                  formula_sql)
             )
@@ -110,7 +108,7 @@ def wizard_mapeamento_indicadores(usuario_id, setor, indicador, sqlite_path, DB_
         st.success("Indicador configurado!")
         st.experimental_rerun()
 
-def carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite_path):
+def carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite_path, DB_PATH):
     garantir_tabela_indicador_mapeamento(sqlite_path)
     with sqlite3.connect(sqlite_path) as conn:
         row = conn.execute(
@@ -118,7 +116,10 @@ def carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite
             (usuario_id, setor, indicador)
         ).fetchone()
     if not row:
-        st.warning(f"Mapeamento não encontrado para {setor} - {indicador}.")
+        st.warning(f"Mapeamento não encontrado para {setor} - {indicador}. Preencha o mapeamento abaixo para continuar.")
+        st.markdown("---")
+        wizard_mapeamento_indicadores(usuario_id, setor, indicador, sqlite_path, DB_PATH)
+        st.stop()
         return "-"
     tabela, col_valor, col_data, col_tipo, vals_entrada, vals_saida, col_filtro, val_filtro, formula_sql = row
     if formula_sql:
@@ -165,19 +166,9 @@ def carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite
 def exibir_indicadores_basicos(usuario_id, setor, indicadores, sqlite_path, DB_PATH):
     garantir_tabela_indicador_mapeamento(sqlite_path)
     periodo = datetime.now().strftime('%Y-%m')
-    with sqlite3.connect(DB_PATH) as conn:
-        garantir_tabela_indicador_mapeamento(DB_PATH)
-        mapeados = pd.read_sql(
-            "SELECT indicador FROM indicador_mapeamento WHERE usuario_id=? AND setor=?",
-            conn, params=(usuario_id, setor)
-        )["indicador"].tolist()
-    for indicador in indicadores:
-        if indicador not in mapeados:
-            wizard_mapeamento_indicadores(usuario_id, setor, indicador, sqlite_path, DB_PATH)
-            st.stop()
     colunas = st.columns(len(indicadores))
     for i, indicador in enumerate(indicadores):
-        valor = carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite_path)
+        valor = carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite_path, DB_PATH)
         colunas[i].metric(indicador, valor)
 
 def excluir_tabelas_sqlite(sqlite_path, tabelas_excluir):
