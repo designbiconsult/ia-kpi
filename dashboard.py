@@ -52,6 +52,121 @@ def atualizar_usuario_campo(id_usuario, campo, valor):
         c.execute(f"UPDATE usuarios SET {campo} = ? WHERE id = ?", (valor, id_usuario))
         conn.commit()
 
+def localizar_coluna(sqlite_path, palavras_chave, preferencia_tipo=None):
+    """
+    Busca na estrutura_dinamica a primeira coluna que bate com as palavras-chave na descrição ou nome.
+    Retorna (tabela, coluna), ou (None, None) se não achar.
+    """
+    try:
+        query = "SELECT tabela, coluna, tipo, descricao FROM estrutura_dinamica"
+        df = pd.read_sql(query, sqlite3.connect(sqlite_path))
+        for kw in palavras_chave:
+            df_filtrado = df[df['descricao'].str.contains(kw, case=False, na=False) | 
+                             df['coluna'].str.contains(kw, case=False, na=False)]
+            if preferencia_tipo:
+                df_filtrado = df_filtrado[df_filtrado['tipo'].str.lower() == preferencia_tipo.lower()]
+            if not df_filtrado.empty:
+                row = df_filtrado.iloc[0]
+                return row['tabela'], row['coluna']
+        return None, None
+    except Exception as e:
+        return None, None
+
+def get_valor_query(sqlite_path, query, fallback="-"):
+    try:
+        with sqlite3.connect(sqlite_path, timeout=10) as conn:
+            df = pd.read_sql(query, conn)
+            if not df.empty:
+                return df.iloc[0, 0]
+            return fallback
+    except:
+        return fallback
+
+def carregar_indicadores_financeiro(sqlite_path):
+    st.subheader("📊 Indicadores Financeiros")
+    col1, col2, col3 = st.columns(3)
+    if st.session_state["ja_sincronizou"]:
+        # Saldos em caixa
+        tb_caixa, col_caixa = localizar_coluna(sqlite_path, ["caixa", "cash", "saldo", "balance"], "REAL")
+        saldo_caixa = get_valor_query(sqlite_path, f"SELECT SUM({col_caixa}) FROM {tb_caixa}" if tb_caixa and col_caixa else "", "-")
+
+        # Receitas do mês
+        tb_receita, col_receita = localizar_coluna(sqlite_path, ["receita", "recebimento", "income", "entrada"], "REAL")
+        col_data_receita = localizar_coluna(sqlite_path, ["data", "competencia", "emissao", "entrada", "mes"], "TEXT")[1]
+        receitas_mes = "-"
+        if tb_receita and col_receita and col_data_receita:
+            query = f"""
+                SELECT SUM({col_receita}) FROM {tb_receita}
+                WHERE strftime('%Y-%m', {col_data_receita}) = strftime('%Y-%m', date('now'))
+            """
+            receitas_mes = get_valor_query(sqlite_path, query, "-")
+
+        # Despesas do mês
+        tb_despesa, col_despesa = localizar_coluna(sqlite_path, ["despesa", "pagamento", "expense", "saida"], "REAL")
+        col_data_despesa = localizar_coluna(sqlite_path, ["data", "competencia", "emissao", "pagamento", "mes"], "TEXT")[1]
+        despesas_mes = "-"
+        if tb_despesa and col_despesa and col_data_despesa:
+            query = f"""
+                SELECT SUM({col_despesa}) FROM {tb_despesa}
+                WHERE strftime('%Y-%m', {col_data_despesa}) = strftime('%Y-%m', date('now'))
+            """
+            despesas_mes = get_valor_query(sqlite_path, query, "-")
+
+        col1.metric("Saldo em Caixa", f"R$ {saldo_caixa:,}" if saldo_caixa != "-" and saldo_caixa is not None else "-")
+        col2.metric("Receitas do Mês", f"R$ {receitas_mes:,}" if receitas_mes != "-" and receitas_mes is not None else "-")
+        col3.metric("Despesas do Mês", f"R$ {despesas_mes:,}" if despesas_mes != "-" and despesas_mes is not None else "-")
+    else:
+        col1.metric("Saldo em Caixa", "-")
+        col2.metric("Receitas do Mês", "-")
+        col3.metric("Despesas do Mês", "-")
+    st.info("Os indicadores financeiros são carregados dinamicamente da base sincronizada.")
+
+def carregar_indicadores_comercial(sqlite_path):
+    st.subheader("📊 Indicadores Comerciais")
+    col1, col2, col3 = st.columns(3)
+    if st.session_state["ja_sincronizou"]:
+        # Vendas no mês
+        tb_venda, col_venda = localizar_coluna(sqlite_path, ["venda", "sales", "total", "valor"], "REAL")
+        col_data_venda = localizar_coluna(sqlite_path, ["data", "emissao", "pedido", "mes"], "TEXT")[1]
+        vendas_mes = "-"
+        if tb_venda and col_venda and col_data_venda:
+            query = f"""
+                SELECT SUM({col_venda}) FROM {tb_venda}
+                WHERE strftime('%Y-%m', {col_data_venda}) = strftime('%Y-%m', date('now'))
+            """
+            vendas_mes = get_valor_query(sqlite_path, query, "-")
+
+        # Clientes ativos no mês
+        tb_cliente, col_cliente = localizar_coluna(sqlite_path, ["cliente", "customer", "id_cliente"], "INTEGER")
+        col_data_cliente = localizar_coluna(sqlite_path, ["data", "emissao", "pedido", "mes"], "TEXT")[1]
+        clientes_ativos = "-"
+        if tb_venda and col_cliente and col_data_venda:
+            query = f"""
+                SELECT COUNT(DISTINCT {col_cliente}) FROM {tb_venda}
+                WHERE strftime('%Y-%m', {col_data_venda}) = strftime('%Y-%m', date('now'))
+            """
+            clientes_ativos = get_valor_query(sqlite_path, query, "-")
+
+        # Novos leads no mês
+        tb_lead, col_lead = localizar_coluna(sqlite_path, ["lead", "prospec", "contato", "cadastro"], "INTEGER")
+        col_data_lead = localizar_coluna(sqlite_path, ["data", "cadastro", "entrada", "mes"], "TEXT")[1]
+        novos_leads = "-"
+        if tb_lead and col_lead and col_data_lead:
+            query = f"""
+                SELECT COUNT(*) FROM {tb_lead}
+                WHERE strftime('%Y-%m', {col_data_lead}) = strftime('%Y-%m', date('now'))
+            """
+            novos_leads = get_valor_query(sqlite_path, query, "-")
+
+        col1.metric("Vendas no Mês", f"R$ {vendas_mes:,}" if vendas_mes != "-" and vendas_mes is not None else "-")
+        col2.metric("Clientes Ativos", clientes_ativos if clientes_ativos != "-" else "-")
+        col3.metric("Novos Leads", novos_leads if novos_leads != "-" else "-")
+    else:
+        col1.metric("Vendas no Mês", "-")
+        col2.metric("Clientes Ativos", "-")
+        col3.metric("Novos Leads", "-")
+    st.info("Os indicadores comerciais são carregados dinamicamente da base sincronizada.")
+
 def carregar_indicadores_producao(sqlite_path, data_inicio, data_fim):
     try:
         with sqlite3.connect(sqlite_path, timeout=10) as conn:
@@ -119,33 +234,6 @@ def carregar_indicadores_producao(sqlite_path, data_inicio, data_fim):
             st.info("Não há dados para o período.")
     except Exception as e:
         st.error(f"❌ Erro ao carregar indicadores: {e}")
-
-def carregar_indicadores_financeiro():
-    st.subheader("📊 Indicadores Financeiros")
-    col1, col2, col3 = st.columns(3)
-    if st.session_state["ja_sincronizou"]:
-        # Aqui insira o cálculo ou SELECT real
-        col1.metric("Saldo em Caixa", "R$ 25.000")
-        col2.metric("Receitas do Mês", "R$ 13.000")
-        col3.metric("Despesas do Mês", "R$ 8.200")
-    else:
-        col1.metric("Saldo em Caixa", "-")
-        col2.metric("Receitas do Mês", "-")
-        col3.metric("Despesas do Mês", "-")
-    st.info("Os indicadores financeiros serão atualizados após sincronizar os dados.")
-
-def carregar_indicadores_comercial():
-    st.subheader("📊 Indicadores Comerciais")
-    col1, col2, col3 = st.columns(3)
-    if st.session_state["ja_sincronizou"]:
-        col1.metric("Vendas no Mês", "R$ 32.000")
-        col2.metric("Clientes Ativos", "320")
-        col3.metric("Novos Leads", "14")
-    else:
-        col1.metric("Vendas no Mês", "-")
-        col2.metric("Clientes Ativos", "-")
-        col3.metric("Novos Leads", "-")
-    st.info("Os indicadores comerciais serão atualizados após sincronizar os dados.")
 
 def excluir_tabelas_sqlite(sqlite_path, tabelas_excluir):
     try:
@@ -304,7 +392,7 @@ elif st.session_state.get("pagina") == "conexao":
         st.session_state["pagina"] = "dashboard"
         st.rerun()
 
-# DASHBOARD PRINCIPAL COM SETORES
+# DASHBOARD PRINCIPAL COM SETORES E BUSCA DINÂMICA NO SQLITE
 elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
@@ -324,14 +412,12 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         if cols[i].button(setor, key=f"btn_{setor}"):
             st.session_state["setor_ativo"] = setor
 
-    # Indicadores por setor (cada um com seu bloco, padrão igual produção)
     setor = st.session_state["setor_ativo"]
     if setor == "Financeiro":
-        carregar_indicadores_financeiro()
+        carregar_indicadores_financeiro(st.session_state["sqlite_path"])
     elif setor == "Comercial":
-        carregar_indicadores_comercial()
+        carregar_indicadores_comercial(st.session_state["sqlite_path"])
     elif setor == "Produção":
-        # Filtro de datas para indicadores de produção
         st.subheader("Selecione o período para indicadores de produção")
         hoje = datetime.now().date()
         data_inicio = st.date_input("Data início", value=hoje.replace(day=1), key="dt_inicio_producao")
@@ -344,7 +430,6 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.markdown("---")
     st.caption("Desenvolvido para visão de futuro.")
 
-    # Entrada IA
     with st.form("pergunta_form"):
         pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
         submitted = st.form_submit_button("🧠 Consultar IA")
