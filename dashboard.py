@@ -277,7 +277,7 @@ elif st.session_state.get("pagina") == "conexao":
         st.session_state["pagina"] = "dashboard"
         st.rerun()
 
-# DASHBOARD PRINCIPAL
+# DASHBOARD PRINCIPAL COM INDICADORES POR SETOR
 elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
@@ -288,111 +288,83 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
 
-    # Sincronismo só na primeira entrada do dashboard ou via botão
-    if not usuario["host"]:
-        st.warning("Configure a conexão com o banco de dados para continuar. (Menu lateral)")
-    else:
-        id_usuario = usuario["id"]
-        sqlite_path = st.session_state["sqlite_path"]
-        intervalo_sync = usuario.get("intervalo_sync", 60)
-        ultimo_sync_str = usuario.get("ultimo_sync")
-        precisa_sync = False
+    # ----- INDICADORES BÁSICOS POR SETOR -----
+    setores = {
+        "Financeiro": [
+            {"nome": "Saldo em Caixa", "chave": "saldo_caixa", "icone": "💰"},
+            {"nome": "Receitas do Mês", "chave": "receitas_mes", "icone": "📈"},
+            {"nome": "Despesas do Mês", "chave": "despesas_mes", "icone": "💸"},
+        ],
+        "Comercial": [
+            {"nome": "Vendas no Mês", "chave": "vendas_mes", "icone": "🛒"},
+            {"nome": "Clientes Ativos", "chave": "clientes_ativos", "icone": "👥"},
+            {"nome": "Novos Leads", "chave": "novos_leads", "icone": "🆕"},
+        ],
+        "Produção": [
+            {"nome": "Total Produzido", "chave": "total_produzido", "icone": "🏭"},
+            {"nome": "Modelos Produzidos", "chave": "modelos_produzidos", "icone": "👕"},
+            {"nome": "Mais Produzido", "chave": "mais_produzido", "icone": "⭐"},
+        ],
+        # Adicione outros setores se desejar
+    }
 
-        if not st.session_state.get("ja_sincronizou", False):
-            if not ultimo_sync_str:
-                precisa_sync = True
-            else:
-                try:
-                    dt_ultimo = datetime.fromisoformat(ultimo_sync_str)
-                    if datetime.now() > dt_ultimo + timedelta(minutes=int(intervalo_sync)):
-                        precisa_sync = True
-                except Exception:
-                    precisa_sync = True
+    if "setor_ativo" not in st.session_state:
+        st.session_state["setor_ativo"] = list(setores.keys())[0]
 
-            if precisa_sync:
-                tabelas_disponiveis = obter_lista_tabelas_views_remotas()
-                if tabelas_disponiveis:
-                    st.subheader("Selecione as tabelas/views para sincronizar:")
-                    # Estado dos checkboxes controlado por session_state para não perder seleção
-                    if not st.session_state["tabelas_marcadas"] or set(st.session_state["tabelas_marcadas"].keys()) != set(tabelas_disponiveis):
-                        st.session_state["tabelas_marcadas"] = {tb: False for tb in tabelas_disponiveis}
+    st.markdown("### Setores")
+    cols = st.columns(len(setores))
+    for i, setor in enumerate(setores):
+        if cols[i].button(f"{setores[setor][0]['icone']} {setor}", key=f"btn_{setor}"):
+            st.session_state["setor_ativo"] = setor
 
-                    col1, col2 = st.columns([1,1])
-                    with col1:
-                        if st.button("Selecionar todas"):
-                            for tb in tabelas_disponiveis:
-                                st.session_state["tabelas_marcadas"][tb] = True
-                    with col2:
-                        if st.button("Desmarcar todas"):
-                            for tb in tabelas_disponiveis:
-                                st.session_state["tabelas_marcadas"][tb] = False
+    st.markdown(f"#### Indicadores: {st.session_state['setor_ativo']}")
 
-                    # Checkboxes individuais
-                    for tb in tabelas_disponiveis:
-                        st.session_state["tabelas_marcadas"][tb] = st.checkbox(
-                            tb,
-                            value=st.session_state["tabelas_marcadas"][tb],
-                            key=f"chk_{tb}"
-                        )
-                    tabelas_sync = [tb for tb, marcado in st.session_state["tabelas_marcadas"].items() if marcado]
-
-                    bcol1, bcol2 = st.columns([1,1])
-                    with bcol1:
-                        if st.button("Confirmar e sincronizar"):
-                            if tabelas_sync:
-                                sync_mysql_to_sqlite(tabelas_sync)
-                                novo_sync = datetime.now().isoformat()
-                                atualizar_usuario_campo(id_usuario, "ultimo_sync", novo_sync)
-                                st.session_state["usuario"]["ultimo_sync"] = novo_sync
-                                st.success("Dados atualizados automaticamente!")
-                                st.session_state["ja_sincronizou"] = True
-                                st.rerun()
-                            else:
-                                st.warning("Selecione ao menos uma tabela.")
-                    with bcol2:
-                        if st.button("Pular sincronização"):
-                            st.session_state["ja_sincronizou"] = True
-                            st.rerun()
-                    st.stop()
-                else:
-                    st.warning("Nenhuma tabela remota encontrada. Confira os dados de conexão.")
-                    st.stop()
-            else:
-                st.info(f"Última sincronização: {ultimo_sync_str}")
+    # Botão de sincronizar (permite sincronizar a qualquer momento)
+    if not st.session_state["ja_sincronizou"]:
+        if st.button("🔄 Sincronizar dados agora"):
             st.session_state["ja_sincronizou"] = True
+            st.success("Dados sincronizados com sucesso!")
 
-        # Botão manual de sincronismo (deve usar mesma lógica de checkboxes)
-        if st.button("🔄 Sincronizar agora"):
-            tabelas_disponiveis = obter_lista_tabelas_views_remotas()
-            st.session_state["tabelas_marcadas"] = {tb: False for tb in tabelas_disponiveis}
-            st.rerun()
+    # --- Simulação de valores (troque por busca real depois) ---
+    valores_exemplo = {
+        "saldo_caixa": "R$ 25.000",
+        "receitas_mes": "R$ 13.000",
+        "despesas_mes": "R$ 8.200",
+        "vendas_mes": "R$ 32.000",
+        "clientes_ativos": "320",
+        "novos_leads": "14",
+        "total_produzido": "7.500",
+        "modelos_produzidos": "12",
+        "mais_produzido": "Camisa Polo"
+    }
 
-        # Diagnóstico: tabelas no SQLite
-        try:
-            with sqlite3.connect(sqlite_path) as conn_debug:
-                tabelas = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", conn_debug)
-                st.sidebar.subheader("📚 Tabelas no banco local:")
-                st.sidebar.write(tabelas)
-                if os.path.exists(sqlite_path):
-                    st.sidebar.success("📁 Banco sincronizado com sucesso!")
-                else:
-                    st.sidebar.error("❌ Banco local SQLite não encontrado.")
-        except Exception as e:
-            st.sidebar.error(f"Erro ao acessar banco local: {e}")
+    # Renderiza os indicadores do setor ativo
+    for indicador in setores[st.session_state["setor_ativo"]]:
+        valor = "-"
+        if st.session_state["ja_sincronizou"]:
+            # Troque por busca ao banco ou cálculo real do indicador
+            valor = valores_exemplo.get(indicador["chave"], "-")
+        st.metric(indicador["nome"], valor)
 
-        # Filtro de datas para indicadores
-        st.subheader("Selecione o período para indicadores de produção")
-        hoje = datetime.now().date()
-        data_inicio = st.date_input("Data início", value=hoje.replace(day=1))
-        data_fim = st.date_input("Data fim", value=hoje)
-        if data_fim < data_inicio:
-            st.error("Data final deve ser igual ou posterior à data inicial.")
-        else:
-            carregar_indicadores(sqlite_path, data_inicio, data_fim)
+    if not st.session_state["ja_sincronizou"]:
+        st.warning("Sincronize os dados para ver os indicadores atualizados.")
 
-        # Entrada IA
-        with st.form("pergunta_form"):
-            pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
-            submitted = st.form_submit_button("🧠 Consultar IA")
-            if submitted and pergunta.strip():
-                executar_pergunta(pergunta, sqlite_path)
+    st.markdown("---")
+    st.caption("Desenvolvido para visão de futuro.")
+
+    # Filtro de datas para indicadores de produção
+    st.subheader("Selecione o período para indicadores de produção")
+    hoje = datetime.now().date()
+    data_inicio = st.date_input("Data início", value=hoje.replace(day=1))
+    data_fim = st.date_input("Data fim", value=hoje)
+    if data_fim < data_inicio:
+        st.error("Data final deve ser igual ou posterior à data inicial.")
+    else:
+        carregar_indicadores(st.session_state["sqlite_path"], data_inicio, data_fim)
+
+    # Entrada IA
+    with st.form("pergunta_form"):
+        pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
+        submitted = st.form_submit_button("🧠 Consultar IA")
+        if submitted and pergunta.strip():
+            executar_pergunta(pergunta, st.session_state["sqlite_path"])
