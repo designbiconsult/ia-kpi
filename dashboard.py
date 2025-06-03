@@ -29,6 +29,19 @@ with sqlite3.connect(DB_PATH, timeout=10) as conn:
             ultimo_sync TEXT
         )
     ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS indicador_mapeamento (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER,
+            setor TEXT,
+            indicador TEXT,
+            tabela TEXT,
+            coluna_valor TEXT,
+            coluna_data TEXT,
+            coluna_filtro TEXT,
+            valor_filtro TEXT
+        )
+    ''')
     conn.commit()
 
 if "logado" not in st.session_state:
@@ -52,178 +65,74 @@ def atualizar_usuario_campo(id_usuario, campo, valor):
         c.execute(f"UPDATE usuarios SET {campo} = ? WHERE id = ?", (valor, id_usuario))
         conn.commit()
 
-def localizar_coluna(sqlite_path, palavras_chave, preferencia_tipo=None):
-    try:
-        query = "SELECT tabela, coluna, tipo, descricao FROM estrutura_dinamica"
-        df = pd.read_sql(query, sqlite3.connect(sqlite_path))
-        for kw in palavras_chave:
-            df_filtrado = df[df['descricao'].str.contains(kw, case=False, na=False) | 
-                             df['coluna'].str.contains(kw, case=False, na=False)]
-            if preferencia_tipo:
-                df_filtrado = df_filtrado[df_filtrado['tipo'].str.lower() == preferencia_tipo.lower()]
-            if not df_filtrado.empty:
-                row = df_filtrado.iloc[0]
-                return row['tabela'], row['coluna']
-        return None, None
-    except Exception as e:
-        return None, None
+def wizard_mapeamento_indicadores(usuario_id, setor, indicador, sqlite_path, DB_PATH):
+    st.info(f"Configuração do indicador: {setor} - {indicador}")
+    with sqlite3.connect(sqlite_path) as conn:
+        tabelas = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", conn)["name"].tolist()
+    tabela = st.selectbox("Tabela:", tabelas, key=f"tb_{setor}_{indicador}")
 
-def get_valor_query(sqlite_path, query, fallback="-"):
+    colunas = []
+    if tabela:
+        with sqlite3.connect(sqlite_path) as conn:
+            colunas = pd.read_sql(f"PRAGMA table_info({tabela})", conn)["name"].tolist()
+
+    coluna_valor = st.selectbox("Coluna de valor:", colunas, key=f"col_val_{setor}_{indicador}")
+    coluna_data = st.selectbox("Coluna de data:", colunas, key=f"col_dt_{setor}_{indicador}")
+    coluna_filtro = st.selectbox("Coluna de filtro (opcional):", ["Nenhum"] + colunas, key=f"col_filt_{setor}_{indicador}")
+    valor_filtro = ""
+    if coluna_filtro != "Nenhum":
+        valor_filtro = st.text_input("Valor do filtro (ex: RECEBER, PAGAR)", key=f"val_filt_{setor}_{indicador}")
+
+    if st.button("Salvar indicador", key=f"save_{setor}_{indicador}"):
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute(
+                "INSERT INTO indicador_mapeamento (usuario_id, setor, indicador, tabela, coluna_valor, coluna_data, coluna_filtro, valor_filtro) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (usuario_id, setor, indicador, tabela, coluna_valor, coluna_data, coluna_filtro if coluna_filtro != "Nenhum" else None, valor_filtro or None)
+            )
+            conn.commit()
+        st.success("Indicador configurado!")
+        st.experimental_rerun()
+
+def carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite_path):
+    with sqlite3.connect(sqlite_path) as conn:
+        row = conn.execute(
+            "SELECT tabela, coluna_valor, coluna_data, coluna_filtro, valor_filtro FROM indicador_mapeamento WHERE usuario_id=? AND setor=? AND indicador=?",
+            (usuario_id, setor, indicador)
+        ).fetchone()
+    if not row:
+        st.warning(f"Mapeamento não encontrado para {setor} - {indicador}.")
+        return "-"
+    tabela, col_valor, col_data, col_filtro, val_filtro = row
+    sql = f"SELECT SUM({col_valor}) FROM {tabela} WHERE strftime('%Y-%m', {col_data}) = '{periodo}'"
+    if col_filtro and val_filtro:
+        sql += f" AND {col_filtro} = '{val_filtro}'"
     try:
-        with sqlite3.connect(sqlite_path, timeout=10) as conn:
-            df = pd.read_sql(query, conn)
+        with sqlite3.connect(sqlite_path) as conn:
+            df = pd.read_sql(sql, conn)
             if not df.empty:
-                return df.iloc[0, 0]
-            return fallback
-    except:
-        return fallback
-
-def carregar_indicadores_financeiro(sqlite_path):
-    st.subheader("📊 Indicadores Financeiros")
-    col1, col2, col3 = st.columns(3)
-    if st.session_state["ja_sincronizou"]:
-        tb_caixa, col_caixa = localizar_coluna(sqlite_path, ["caixa", "cash", "saldo", "balance"], "REAL")
-        saldo_caixa = get_valor_query(sqlite_path, f"SELECT SUM({col_caixa}) FROM {tb_caixa}" if tb_caixa and col_caixa else "", "-")
-
-        tb_receita, col_receita = localizar_coluna(sqlite_path, ["receita", "recebimento", "income", "entrada"], "REAL")
-        col_data_receita = localizar_coluna(sqlite_path, ["data", "competencia", "emissao", "entrada", "mes"], "TEXT")[1]
-        receitas_mes = "-"
-        if tb_receita and col_receita and col_data_receita:
-            query = f"""
-                SELECT SUM({col_receita}) FROM {tb_receita}
-                WHERE strftime('%Y-%m', {col_data_receita}) = strftime('%Y-%m', date('now'))
-            """
-            receitas_mes = get_valor_query(sqlite_path, query, "-")
-
-        tb_despesa, col_despesa = localizar_coluna(sqlite_path, ["despesa", "pagamento", "expense", "saida"], "REAL")
-        col_data_despesa = localizar_coluna(sqlite_path, ["data", "competencia", "emissao", "pagamento", "mes"], "TEXT")[1]
-        despesas_mes = "-"
-        if tb_despesa and col_despesa and col_data_despesa:
-            query = f"""
-                SELECT SUM({col_despesa}) FROM {tb_despesa}
-                WHERE strftime('%Y-%m', {col_data_despesa}) = strftime('%Y-%m', date('now'))
-            """
-            despesas_mes = get_valor_query(sqlite_path, query, "-")
-
-        col1.metric("Saldo em Caixa", f"R$ {saldo_caixa:,}" if saldo_caixa != "-" and saldo_caixa is not None else "-")
-        col2.metric("Receitas do Mês", f"R$ {receitas_mes:,}" if receitas_mes != "-" and receitas_mes is not None else "-")
-        col3.metric("Despesas do Mês", f"R$ {despesas_mes:,}" if despesas_mes != "-" and despesas_mes is not None else "-")
-    else:
-        col1.metric("Saldo em Caixa", "-")
-        col2.metric("Receitas do Mês", "-")
-        col3.metric("Despesas do Mês", "-")
-    st.info("Os indicadores financeiros são carregados dinamicamente da base sincronizada.")
-
-def carregar_indicadores_comercial(sqlite_path):
-    st.subheader("📊 Indicadores Comerciais")
-    col1, col2, col3 = st.columns(3)
-    if st.session_state["ja_sincronizou"]:
-        tb_venda, col_venda = localizar_coluna(sqlite_path, ["venda", "sales", "total", "valor"], "REAL")
-        col_data_venda = localizar_coluna(sqlite_path, ["data", "emissao", "pedido", "mes"], "TEXT")[1]
-        vendas_mes = "-"
-        if tb_venda and col_venda and col_data_venda:
-            query = f"""
-                SELECT SUM({col_venda}) FROM {tb_venda}
-                WHERE strftime('%Y-%m', {col_data_venda}) = strftime('%Y-%m', date('now'))
-            """
-            vendas_mes = get_valor_query(sqlite_path, query, "-")
-
-        tb_cliente, col_cliente = localizar_coluna(sqlite_path, ["cliente", "customer", "id_cliente"], "INTEGER")
-        col_data_cliente = localizar_coluna(sqlite_path, ["data", "emissao", "pedido", "mes"], "TEXT")[1]
-        clientes_ativos = "-"
-        if tb_venda and col_cliente and col_data_venda:
-            query = f"""
-                SELECT COUNT(DISTINCT {col_cliente}) FROM {tb_venda}
-                WHERE strftime('%Y-%m', {col_data_venda}) = strftime('%Y-%m', date('now'))
-            """
-            clientes_ativos = get_valor_query(sqlite_path, query, "-")
-
-        tb_lead, col_lead = localizar_coluna(sqlite_path, ["lead", "prospec", "contato", "cadastro"], "INTEGER")
-        col_data_lead = localizar_coluna(sqlite_path, ["data", "cadastro", "entrada", "mes"], "TEXT")[1]
-        novos_leads = "-"
-        if tb_lead and col_lead and col_data_lead:
-            query = f"""
-                SELECT COUNT(*) FROM {tb_lead}
-                WHERE strftime('%Y-%m', {col_data_lead}) = strftime('%Y-%m', date('now'))
-            """
-            novos_leads = get_valor_query(sqlite_path, query, "-")
-
-        col1.metric("Vendas no Mês", f"R$ {vendas_mes:,}" if vendas_mes != "-" and vendas_mes is not None else "-")
-        col2.metric("Clientes Ativos", clientes_ativos if clientes_ativos != "-" else "-")
-        col3.metric("Novos Leads", novos_leads if novos_leads != "-" else "-")
-    else:
-        col1.metric("Vendas no Mês", "-")
-        col2.metric("Clientes Ativos", "-")
-        col3.metric("Novos Leads", "-")
-    st.info("Os indicadores comerciais são carregados dinamicamente da base sincronizada.")
-
-def carregar_indicadores_producao(sqlite_path, data_inicio, data_fim):
-    try:
-        with sqlite3.connect(sqlite_path, timeout=10) as conn:
-            try:
-                total_modelos = pd.read_sql(f"""
-                    SELECT COUNT(DISTINCT PROD.REFERENCIA_PRODUTO) AS total
-                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
-                    JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
-                    WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
-                      AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                """, conn)["total"][0] or 0
-            except:
-                total_modelos = 0
-            try:
-                qtd_produzida = pd.read_sql(f"""
-                    SELECT SUM(QTD_MOVIMENTACAO) as total
-                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM
-                    WHERE TIPO_MOVIMENTACAO = 'Produzida'
-                      AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                """, conn)["total"][0] or 0
-            except:
-                qtd_produzida = 0
-            try:
-                produto_top = pd.read_sql(f"""
-                    SELECT PROD.DESCRICAO_PRODUTO, SUM(ITEM.QTD_MOVIMENTACAO) as total
-                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM ITEM
-                    JOIN VW_CTO_PRODUTO PROD ON ITEM.CODIGO_INTERNO_PRODUTO = PROD.CODIGO_INTERNO_PRODUTO
-                    WHERE ITEM.TIPO_MOVIMENTACAO = 'Produzida'
-                      AND ITEM.DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                    GROUP BY PROD.DESCRICAO_PRODUTO
-                    ORDER BY total DESC
-                    LIMIT 1
-                """, conn)
-                nome_produto = produto_top["DESCRICAO_PRODUTO"][0] if not produto_top.empty else "Nenhum"
-                qtd_produto = produto_top["total"][0] if not produto_top.empty else 0
-            except:
-                nome_produto = "Nenhum"
-                qtd_produto = 0
-            try:
-                grafico_df = pd.read_sql(f"""
-                    SELECT strftime('%Y-%m', DATA_MOVIMENTACAO) as mes, SUM(QTD_MOVIMENTACAO) as total
-                    FROM VW_CTO_ORDEM_PRODUCAO_ITEM
-                    WHERE TIPO_MOVIMENTACAO = 'Produzida'
-                      AND DATA_MOVIMENTACAO BETWEEN '{data_inicio}' AND '{data_fim}'
-                    GROUP BY mes
-                    ORDER BY mes
-                """, conn)
-            except:
-                grafico_df = pd.DataFrame({"mes":[], "total":[]})
-
-        st.subheader("📊 Indicadores de Produção")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Modelos produzidos", total_modelos)
-        col2.metric("Total produzido", int(qtd_produzida))
-        col3.metric("Mais produzido", f"{nome_produto} ({int(qtd_produto)})")
-        st.subheader("📈 Produção por mês no período")
-        if not grafico_df.empty:
-            fig, ax = plt.subplots()
-            ax.bar(grafico_df["mes"], grafico_df["total"])
-            ax.set_ylabel("Qtd Produzida")
-            ax.set_xlabel("Mês")
-            ax.set_title("Produção Mensal")
-            st.pyplot(fig)
-        else:
-            st.info("Não há dados para o período.")
+                return df.iloc[0, 0] or 0
+            return 0
     except Exception as e:
-        st.error(f"❌ Erro ao carregar indicadores: {e}")
+        st.error(f"Erro ao buscar indicador: {e}")
+        return "-"
+
+def exibir_indicadores_basicos(usuario_id, setor, indicadores, sqlite_path, DB_PATH):
+    periodo = datetime.now().strftime('%Y-%m')
+    with sqlite3.connect(DB_PATH) as conn:
+        mapeados = pd.read_sql(
+            "SELECT indicador FROM indicador_mapeamento WHERE usuario_id=? AND setor=?",
+            conn, params=(usuario_id, setor)
+        )["indicador"].tolist()
+
+    for indicador in indicadores:
+        if indicador not in mapeados:
+            wizard_mapeamento_indicadores(usuario_id, setor, indicador, sqlite_path, DB_PATH)
+            st.stop()  # Aguarda o usuário mapear antes de seguir
+
+    colunas = st.columns(len(indicadores))
+    for i, indicador in enumerate(indicadores):
+        valor = carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite_path)
+        colunas[i].metric(indicador, valor)
 
 def excluir_tabelas_sqlite(sqlite_path, tabelas_excluir):
     try:
@@ -401,7 +310,6 @@ elif st.session_state.get("pagina") == "dashboard_sync":
             for tb in tabelas_disponiveis:
                 st.session_state["tabelas_marcadas"][tb] = False
 
-    # Checkboxes individuais
     for tb in tabelas_disponiveis:
         st.session_state["tabelas_marcadas"][tb] = st.checkbox(
             tb,
@@ -435,6 +343,7 @@ elif st.session_state.get("pagina") == "dashboard_sync":
 elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
+    usuario_id = usuario["id"]
     st.session_state["mysql_host"] = usuario["host"]
     st.session_state["mysql_port"] = usuario["porta"]
     st.session_state["mysql_user"] = usuario["usuario_banco"]
@@ -442,35 +351,24 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
 
-    # Botão manual de sincronismo
     if st.button("🔄 Sincronizar agora"):
         st.session_state["pagina"] = "dashboard_sync"
         st.rerun()
 
-    setores = ["Financeiro", "Comercial", "Produção"]
+    setores = {
+        "Financeiro": ["Receitas do mês", "Despesas do mês", "Saldo em Caixa"],
+        "Comercial": ["Vendas no mês", "Clientes Ativos", "Novos Leads"],
+        "Produção": ["Produção do mês", "Modelos produzidos", "Mais produzido"]
+    }
     if "setor_ativo" not in st.session_state:
-        st.session_state["setor_ativo"] = setores[0]
-    st.markdown("### Setores")
+        st.session_state["setor_ativo"] = list(setores.keys())[0]
     cols = st.columns(len(setores))
     for i, setor in enumerate(setores):
         if cols[i].button(setor, key=f"btn_{setor}"):
             st.session_state["setor_ativo"] = setor
-
     setor = st.session_state["setor_ativo"]
-    if setor == "Financeiro":
-        carregar_indicadores_financeiro(st.session_state["sqlite_path"])
-    elif setor == "Comercial":
-        carregar_indicadores_comercial(st.session_state["sqlite_path"])
-    elif setor == "Produção":
-        st.subheader("Selecione o período para indicadores de produção")
-        hoje = datetime.now().date()
-        data_inicio = st.date_input("Data início", value=hoje.replace(day=1), key="dt_inicio_producao")
-        data_fim = st.date_input("Data fim", value=hoje, key="dt_fim_producao")
-        if data_fim < data_inicio:
-            st.error("Data final deve ser igual ou posterior à data inicial.")
-        else:
-            carregar_indicadores_producao(st.session_state["sqlite_path"], data_inicio, data_fim)
 
+    exibir_indicadores_basicos(usuario_id, setor, setores[setor], st.session_state["sqlite_path"], DB_PATH)
     st.markdown("---")
     st.caption("Desenvolvido para visão de futuro.")
 
