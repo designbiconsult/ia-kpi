@@ -52,7 +52,7 @@ def atualizar_usuario_campo(id_usuario, campo, valor):
         c.execute(f"UPDATE usuarios SET {campo} = ? WHERE id = ?", (valor, id_usuario))
         conn.commit()
 
-def carregar_indicadores(sqlite_path, data_inicio, data_fim):
+def carregar_indicadores_producao(sqlite_path, data_inicio, data_fim):
     try:
         with sqlite3.connect(sqlite_path, timeout=10) as conn:
             try:
@@ -119,6 +119,33 @@ def carregar_indicadores(sqlite_path, data_inicio, data_fim):
             st.info("Não há dados para o período.")
     except Exception as e:
         st.error(f"❌ Erro ao carregar indicadores: {e}")
+
+def carregar_indicadores_financeiro():
+    st.subheader("📊 Indicadores Financeiros")
+    col1, col2, col3 = st.columns(3)
+    if st.session_state["ja_sincronizou"]:
+        # Aqui insira o cálculo ou SELECT real
+        col1.metric("Saldo em Caixa", "R$ 25.000")
+        col2.metric("Receitas do Mês", "R$ 13.000")
+        col3.metric("Despesas do Mês", "R$ 8.200")
+    else:
+        col1.metric("Saldo em Caixa", "-")
+        col2.metric("Receitas do Mês", "-")
+        col3.metric("Despesas do Mês", "-")
+    st.info("Os indicadores financeiros serão atualizados após sincronizar os dados.")
+
+def carregar_indicadores_comercial():
+    st.subheader("📊 Indicadores Comerciais")
+    col1, col2, col3 = st.columns(3)
+    if st.session_state["ja_sincronizou"]:
+        col1.metric("Vendas no Mês", "R$ 32.000")
+        col2.metric("Clientes Ativos", "320")
+        col3.metric("Novos Leads", "14")
+    else:
+        col1.metric("Vendas no Mês", "-")
+        col2.metric("Clientes Ativos", "-")
+        col3.metric("Novos Leads", "-")
+    st.info("Os indicadores comerciais serão atualizados após sincronizar os dados.")
 
 def excluir_tabelas_sqlite(sqlite_path, tabelas_excluir):
     try:
@@ -277,7 +304,7 @@ elif st.session_state.get("pagina") == "conexao":
         st.session_state["pagina"] = "dashboard"
         st.rerun()
 
-# DASHBOARD PRINCIPAL COM INDICADORES POR SETOR
+# DASHBOARD PRINCIPAL COM SETORES
 elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
@@ -288,79 +315,34 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
 
-    # ----- INDICADORES BÁSICOS POR SETOR -----
-    setores = {
-        "Financeiro": [
-            {"nome": "Saldo em Caixa", "chave": "saldo_caixa", "icone": "💰"},
-            {"nome": "Receitas do Mês", "chave": "receitas_mes", "icone": "📈"},
-            {"nome": "Despesas do Mês", "chave": "despesas_mes", "icone": "💸"},
-        ],
-        "Comercial": [
-            {"nome": "Vendas no Mês", "chave": "vendas_mes", "icone": "🛒"},
-            {"nome": "Clientes Ativos", "chave": "clientes_ativos", "icone": "👥"},
-            {"nome": "Novos Leads", "chave": "novos_leads", "icone": "🆕"},
-        ],
-        "Produção": [
-            {"nome": "Total Produzido", "chave": "total_produzido", "icone": "🏭"},
-            {"nome": "Modelos Produzidos", "chave": "modelos_produzidos", "icone": "👕"},
-            {"nome": "Mais Produzido", "chave": "mais_produzido", "icone": "⭐"},
-        ],
-        # Adicione outros setores se desejar
-    }
-
+    setores = ["Financeiro", "Comercial", "Produção"]
     if "setor_ativo" not in st.session_state:
-        st.session_state["setor_ativo"] = list(setores.keys())[0]
-
+        st.session_state["setor_ativo"] = setores[0]
     st.markdown("### Setores")
     cols = st.columns(len(setores))
     for i, setor in enumerate(setores):
-        if cols[i].button(f"{setores[setor][0]['icone']} {setor}", key=f"btn_{setor}"):
+        if cols[i].button(setor, key=f"btn_{setor}"):
             st.session_state["setor_ativo"] = setor
 
-    st.markdown(f"#### Indicadores: {st.session_state['setor_ativo']}")
-
-    # Botão de sincronizar (permite sincronizar a qualquer momento)
-    if not st.session_state["ja_sincronizou"]:
-        if st.button("🔄 Sincronizar dados agora"):
-            st.session_state["ja_sincronizou"] = True
-            st.success("Dados sincronizados com sucesso!")
-
-    # --- Simulação de valores (troque por busca real depois) ---
-    valores_exemplo = {
-        "saldo_caixa": "R$ 25.000",
-        "receitas_mes": "R$ 13.000",
-        "despesas_mes": "R$ 8.200",
-        "vendas_mes": "R$ 32.000",
-        "clientes_ativos": "320",
-        "novos_leads": "14",
-        "total_produzido": "7.500",
-        "modelos_produzidos": "12",
-        "mais_produzido": "Camisa Polo"
-    }
-
-    # Renderiza os indicadores do setor ativo
-    for indicador in setores[st.session_state["setor_ativo"]]:
-        valor = "-"
-        if st.session_state["ja_sincronizou"]:
-            # Troque por busca ao banco ou cálculo real do indicador
-            valor = valores_exemplo.get(indicador["chave"], "-")
-        st.metric(indicador["nome"], valor)
-
-    if not st.session_state["ja_sincronizou"]:
-        st.warning("Sincronize os dados para ver os indicadores atualizados.")
+    # Indicadores por setor (cada um com seu bloco, padrão igual produção)
+    setor = st.session_state["setor_ativo"]
+    if setor == "Financeiro":
+        carregar_indicadores_financeiro()
+    elif setor == "Comercial":
+        carregar_indicadores_comercial()
+    elif setor == "Produção":
+        # Filtro de datas para indicadores de produção
+        st.subheader("Selecione o período para indicadores de produção")
+        hoje = datetime.now().date()
+        data_inicio = st.date_input("Data início", value=hoje.replace(day=1), key="dt_inicio_producao")
+        data_fim = st.date_input("Data fim", value=hoje, key="dt_fim_producao")
+        if data_fim < data_inicio:
+            st.error("Data final deve ser igual ou posterior à data inicial.")
+        else:
+            carregar_indicadores_producao(st.session_state["sqlite_path"], data_inicio, data_fim)
 
     st.markdown("---")
     st.caption("Desenvolvido para visão de futuro.")
-
-    # Filtro de datas para indicadores de produção
-    st.subheader("Selecione o período para indicadores de produção")
-    hoje = datetime.now().date()
-    data_inicio = st.date_input("Data início", value=hoje.replace(day=1))
-    data_fim = st.date_input("Data fim", value=hoje)
-    if data_fim < data_inicio:
-        st.error("Data final deve ser igual ou posterior à data inicial.")
-    else:
-        carregar_indicadores(st.session_state["sqlite_path"], data_inicio, data_fim)
 
     # Entrada IA
     with st.form("pergunta_form"):
