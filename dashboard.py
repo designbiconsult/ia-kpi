@@ -11,42 +11,30 @@ DB_PATH = "data/database.db"
 os.makedirs("data", exist_ok=True)
 st.set_page_config(page_title="IA KPI", layout="wide", initial_sidebar_state="expanded")
 
-# Criação das tabelas necessárias
-with sqlite3.connect(DB_PATH, timeout=10) as conn:
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            senha TEXT NOT NULL,
-            host TEXT,
-            porta TEXT,
-            usuario_banco TEXT,
-            senha_banco TEXT,
-            schema TEXT,
-            intervalo_sync INTEGER DEFAULT 60,
-            ultimo_sync TEXT
-        )
-    ''')
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS indicador_mapeamento (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario_id INTEGER,
-            setor TEXT,
-            indicador TEXT,
-            tabela TEXT,
-            coluna_valor TEXT,
-            coluna_data TEXT,
-            coluna_tipo TEXT,
-            valores_entrada TEXT,
-            valores_saida TEXT,
-            coluna_filtro TEXT,
-            valor_filtro TEXT,
-            formula_sql TEXT -- Armazena a query customizada, se aplicável
-        )
-    ''')
-    conn.commit()
+# --- Função universal para garantir a existência da tabela em qualquer banco ---
+def garantir_tabela_indicador_mapeamento(path):
+    with sqlite3.connect(path) as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS indicador_mapeamento (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id INTEGER,
+                setor TEXT,
+                indicador TEXT,
+                tabela TEXT,
+                coluna_valor TEXT,
+                coluna_data TEXT,
+                coluna_tipo TEXT,
+                valores_entrada TEXT,
+                valores_saida TEXT,
+                coluna_filtro TEXT,
+                valor_filtro TEXT,
+                formula_sql TEXT
+            )
+        ''')
+        conn.commit()
+
+# --- Sempre garanta no banco global ---
+garantir_tabela_indicador_mapeamento(DB_PATH)
 
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
@@ -70,6 +58,7 @@ def atualizar_usuario_campo(id_usuario, campo, valor):
         conn.commit()
 
 def wizard_mapeamento_indicadores(usuario_id, setor, indicador, sqlite_path, DB_PATH):
+    garantir_tabela_indicador_mapeamento(sqlite_path)
     st.info(f"Configuração do indicador: {setor} - {indicador}")
     with sqlite3.connect(sqlite_path) as conn:
         tabelas = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", conn)["name"].tolist()
@@ -83,7 +72,6 @@ def wizard_mapeamento_indicadores(usuario_id, setor, indicador, sqlite_path, DB_
     coluna_valor = st.selectbox("Coluna de valor:", colunas, key=f"col_val_{setor}_{indicador}")
     coluna_data = st.selectbox("Coluna de data:", colunas, key=f"col_dt_{setor}_{indicador}")
 
-    # Se for Saldo em Caixa, mostrar opções avançadas
     coluna_tipo = ""
     valores_entrada = ""
     valores_saida = ""
@@ -92,15 +80,11 @@ def wizard_mapeamento_indicadores(usuario_id, setor, indicador, sqlite_path, DB_
         coluna_tipo = st.selectbox("Coluna do tipo de movimento (entrada/saída):", colunas, key=f"col_tipo_{setor}_{indicador}")
         valores_entrada = st.text_input("Valores de ENTRADA (separados por vírgula, ex: RECEBER,ENTRADA):", key=f"val_entrada_{setor}_{indicador}")
         valores_saida = st.text_input("Valores de SAÍDA (separados por vírgula, ex: PAGAR,SAÍDA):", key=f"val_saida_{setor}_{indicador}")
-        # Filtro opcional
         coluna_filtro = st.selectbox("Coluna de filtro (opcional, ex: BANCO, COFRE):", ["Nenhum"] + colunas, key=f"col_filt_{setor}_{indicador}")
         valor_filtro = ""
         if coluna_filtro != "Nenhum":
             valor_filtro = st.text_input("Valor do filtro (opcional, ex: BANCO1):", key=f"val_filt_{setor}_{indicador}")
-
-        # SQL será montado automaticamente, mas pode salvar customizado se quiser depois
-        formula_sql = ""  # futuro: permitir edição avançada
-
+        formula_sql = ""
     else:
         coluna_tipo = st.selectbox("Coluna do tipo de movimento (opcional):", ["Nenhum"] + colunas, key=f"col_tipo_{setor}_{indicador}")
         valores_entrada = st.text_input("Valores para considerar (opcional, ex: RECEBER):", key=f"val_entrada_{setor}_{indicador}")
@@ -109,11 +93,11 @@ def wizard_mapeamento_indicadores(usuario_id, setor, indicador, sqlite_path, DB_
         valor_filtro = ""
         if coluna_filtro != "Nenhum":
             valor_filtro = st.text_input("Valor do filtro (opcional):", key=f"val_filt_{setor}_{indicador}")
-
-        formula_sql = ""  # futuro: permitir customização livre
+        formula_sql = ""
 
     if st.button("Salvar indicador", key=f"save_{setor}_{indicador}"):
-        with sqlite3.connect(DB_PATH) as conn:
+        garantir_tabela_indicador_mapeamento(sqlite_path)
+        with sqlite3.connect(sqlite_path) as conn:
             conn.execute(
                 "INSERT INTO indicador_mapeamento (usuario_id, setor, indicador, tabela, coluna_valor, coluna_data, coluna_tipo, valores_entrada, valores_saida, coluna_filtro, valor_filtro, formula_sql) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (usuario_id, setor, indicador, tabela, coluna_valor, coluna_data, 
@@ -124,9 +108,10 @@ def wizard_mapeamento_indicadores(usuario_id, setor, indicador, sqlite_path, DB_
             )
             conn.commit()
         st.success("Indicador configurado!")
-        st.rerun()
+        st.experimental_rerun()
 
 def carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite_path):
+    garantir_tabela_indicador_mapeamento(sqlite_path)
     with sqlite3.connect(sqlite_path) as conn:
         row = conn.execute(
             "SELECT tabela, coluna_valor, coluna_data, coluna_tipo, valores_entrada, valores_saida, coluna_filtro, valor_filtro, formula_sql FROM indicador_mapeamento WHERE usuario_id=? AND setor=? AND indicador=?",
@@ -136,12 +121,9 @@ def carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite
         st.warning(f"Mapeamento não encontrado para {setor} - {indicador}.")
         return "-"
     tabela, col_valor, col_data, col_tipo, vals_entrada, vals_saida, col_filtro, val_filtro, formula_sql = row
-
-    # Se houver fórmula customizada salva, execute
     if formula_sql:
         sql = formula_sql
     elif indicador == "Saldo em Caixa":
-        # Monta o SQL para saldo: entradas - saídas
         condicoes = [f"strftime('%Y-%m', {col_data}) <= '{periodo}'"]
         if col_filtro and val_filtro:
             condicoes.append(f"{col_filtro} = '{val_filtro}'")
@@ -154,7 +136,6 @@ def carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite
         if saida_list:
             exits = ", ".join([f"'{v}'" for v in saida_list])
             cases.append(f"WHEN {col_tipo} IN ({exits}) THEN -1*{col_valor}")
-        # Default (ignora outros tipos)
         cases.append("ELSE 0")
         sql = f"""
             SELECT SUM(CASE
@@ -164,7 +145,6 @@ def carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite
             WHERE {' AND '.join(condicoes)}
         """
     else:
-        # Indicador simples: soma condicionada ou não
         condicoes = [f"strftime('%Y-%m', {col_data}) = '{periodo}'"]
         if col_tipo and vals_entrada:
             entradas = ", ".join([f"'{v.strip()}'" for v in vals_entrada.split(",") if v.strip()])
@@ -172,7 +152,6 @@ def carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite
         if col_filtro and val_filtro:
             condicoes.append(f"{col_filtro} = '{val_filtro}'")
         sql = f"SELECT SUM({col_valor}) FROM {tabela} WHERE {' AND '.join(condicoes)}"
-
     try:
         with sqlite3.connect(sqlite_path) as conn:
             df = pd.read_sql(sql, conn)
@@ -184,18 +163,18 @@ def carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite
         return "-"
 
 def exibir_indicadores_basicos(usuario_id, setor, indicadores, sqlite_path, DB_PATH):
+    garantir_tabela_indicador_mapeamento(sqlite_path)
     periodo = datetime.now().strftime('%Y-%m')
     with sqlite3.connect(DB_PATH) as conn:
+        garantir_tabela_indicador_mapeamento(DB_PATH)
         mapeados = pd.read_sql(
             "SELECT indicador FROM indicador_mapeamento WHERE usuario_id=? AND setor=?",
             conn, params=(usuario_id, setor)
         )["indicador"].tolist()
-
     for indicador in indicadores:
         if indicador not in mapeados:
             wizard_mapeamento_indicadores(usuario_id, setor, indicador, sqlite_path, DB_PATH)
-            st.stop()  # Aguarda o usuário mapear antes de seguir
-
+            st.stop()
     colunas = st.columns(len(indicadores))
     for i, indicador in enumerate(indicadores):
         valor = carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite_path)
@@ -212,7 +191,6 @@ def excluir_tabelas_sqlite(sqlite_path, tabelas_excluir):
     except Exception as e:
         st.error(f"Erro ao excluir tabela(s): {e}")
 
-# SIDEBAR UNIVERSAL
 if st.session_state.get("logado"):
     with st.sidebar:
         st.markdown("---")
@@ -238,7 +216,7 @@ if st.session_state.get("logado"):
                 if st.button("Excluir selecionadas"):
                     if tabelas_excluir:
                         excluir_tabelas_sqlite(sqlite_path, tabelas_excluir)
-                        st.rerun()
+                        st.experimental_rerun()
                     else:
                         st.info("Nenhuma tabela marcada para exclusão.")
             else:
@@ -246,7 +224,6 @@ if st.session_state.get("logado"):
         else:
             st.info("Banco local ainda não sincronizado.")
 
-# LOGIN
 if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
     st.title("🔐 Login IA KPI")
     email = st.text_input("Email")
@@ -273,6 +250,7 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
             st.session_state["mysql_password"] = usuario[7]
             st.session_state["mysql_database"] = usuario[8]
             st.session_state["sqlite_path"] = f"data/cliente_{usuario[0]}.db"
+            garantir_tabela_indicador_mapeamento(st.session_state["sqlite_path"])
             st.session_state["pagina"] = "dashboard"
             st.session_state["ja_sincronizou"] = False
             st.rerun()
@@ -285,7 +263,6 @@ if st.session_state["pagina"] == "login" and not st.session_state["logado"]:
         st.session_state["pagina"] = "cadastro"
         st.rerun()
 
-# CADASTRO
 elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]:
     st.title("📊 Cadastro de Cliente IA KPI")
     with st.form("cadastro_form"):
@@ -293,7 +270,6 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
         email = st.text_input("Email")
         senha = st.text_input("Senha", type="password")
         submitted = st.form_submit_button("Cadastrar")
-
         if submitted:
             if not (nome and email and senha):
                 st.error("Preencha todos os campos.")
@@ -315,7 +291,6 @@ elif st.session_state["pagina"] == "cadastro" and not st.session_state["logado"]
         st.session_state["pagina"] = "login"
         st.rerun()
 
-# CONEXÃO BANCO
 elif st.session_state.get("pagina") == "conexao":
     st.title("⚙️ Configuração da conexão com o banco")
     usuario = st.session_state["usuario"]
@@ -349,6 +324,7 @@ elif st.session_state.get("pagina") == "conexao":
             st.session_state["mysql_password"] = senha_banco
             st.session_state["mysql_database"] = schema
             st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
+            garantir_tabela_indicador_mapeamento(st.session_state["sqlite_path"])
             st.session_state["ja_sincronizou"] = False
             st.success("Conexão salva com sucesso!")
             st.session_state["pagina"] = "dashboard"
@@ -357,16 +333,15 @@ elif st.session_state.get("pagina") == "conexao":
         st.session_state["pagina"] = "dashboard"
         st.rerun()
 
-# FLUXO DE SINCRONIZAÇÃO MANUAL
 elif st.session_state.get("pagina") == "dashboard_sync":
     usuario = st.session_state["usuario"]
     id_usuario = usuario["id"]
     sqlite_path = st.session_state["sqlite_path"]
+    garantir_tabela_indicador_mapeamento(sqlite_path)
     tabelas_disponiveis = obter_lista_tabelas_views_remotas()
     st.subheader("Selecione as tabelas/views para sincronizar:")
     if not st.session_state["tabelas_marcadas"] or set(st.session_state["tabelas_marcadas"].keys()) != set(tabelas_disponiveis):
         st.session_state["tabelas_marcadas"] = {tb: False for tb in tabelas_disponiveis}
-
     col1, col2 = st.columns([1,1])
     with col1:
         if st.button("Selecionar todas"):
@@ -376,7 +351,6 @@ elif st.session_state.get("pagina") == "dashboard_sync":
         if st.button("Desmarcar todas"):
             for tb in tabelas_disponiveis:
                 st.session_state["tabelas_marcadas"][tb] = False
-
     for tb in tabelas_disponiveis:
         st.session_state["tabelas_marcadas"][tb] = st.checkbox(
             tb,
@@ -384,7 +358,6 @@ elif st.session_state.get("pagina") == "dashboard_sync":
             key=f"chk_{tb}"
         )
     tabelas_sync = [tb for tb, marcado in st.session_state["tabelas_marcadas"].items() if marcado]
-
     bcol1, bcol2 = st.columns([1,1])
     with bcol1:
         if st.button("Confirmar e sincronizar"):
@@ -406,7 +379,6 @@ elif st.session_state.get("pagina") == "dashboard_sync":
             st.rerun()
     st.stop()
 
-# DASHBOARD PRINCIPAL
 elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashboard":
     st.title(f"🎯 Bem-vindo, {st.session_state['usuario']['nome']}")
     usuario = st.session_state["usuario"]
@@ -417,11 +389,10 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
     st.session_state["mysql_password"] = usuario["senha_banco"]
     st.session_state["mysql_database"] = usuario["schema"]
     st.session_state["sqlite_path"] = f"data/cliente_{usuario['id']}.db"
-
+    garantir_tabela_indicador_mapeamento(st.session_state["sqlite_path"])
     if st.button("🔄 Sincronizar agora"):
         st.session_state["pagina"] = "dashboard_sync"
         st.rerun()
-
     setores = {
         "Financeiro": ["Receitas do mês", "Despesas do mês", "Saldo em Caixa"],
         "Comercial": ["Vendas no mês", "Clientes Ativos", "Novos Leads"],
@@ -434,11 +405,9 @@ elif st.session_state.get("logado") and st.session_state.get("pagina") == "dashb
         if cols[i].button(setor, key=f"btn_{setor}"):
             st.session_state["setor_ativo"] = setor
     setor = st.session_state["setor_ativo"]
-
     exibir_indicadores_basicos(usuario_id, setor, setores[setor], st.session_state["sqlite_path"], DB_PATH)
     st.markdown("---")
     st.caption("Desenvolvido para visão de futuro.")
-
     with st.form("pergunta_form"):
         pergunta = st.text_input("Exemplo: Qual o produto mais produzido em abril de 2025?", key="pergunta_ia")
         submitted = st.form_submit_button("🧠 Consultar IA")
