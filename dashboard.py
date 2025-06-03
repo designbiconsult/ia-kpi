@@ -106,7 +106,7 @@ def wizard_mapeamento_indicadores(usuario_id, setor, indicador, sqlite_path, DB_
             )
             conn.commit()
         st.success("Indicador configurado!")
-        st.experimental_rerun()
+        st.rerun()
 
 def carregar_indicador_configurado(usuario_id, setor, indicador, periodo, sqlite_path, DB_PATH):
     garantir_tabela_indicador_mapeamento(sqlite_path)
@@ -207,7 +207,7 @@ if st.session_state.get("logado"):
                 if st.button("Excluir selecionadas"):
                     if tabelas_excluir:
                         excluir_tabelas_sqlite(sqlite_path, tabelas_excluir)
-                        st.experimental_rerun()
+                        st.rerun()
                     else:
                         st.info("Nenhuma tabela marcada para exclusão.")
             else:
