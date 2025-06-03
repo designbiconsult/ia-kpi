@@ -78,7 +78,7 @@ def executar_pergunta(pergunta, sqlite_path):
                     "messages": messages,
                     "stream": False
                 },
-                timeout=120
+                timeout=5000
             )
             if response.status_code == 200:
                 content = response.json()
