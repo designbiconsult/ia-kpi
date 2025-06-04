@@ -1,8 +1,7 @@
-from fastapi import FastAPI, HTTPException, Path
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Dict
 import sqlite3
+from typing import List, Dict
 
 app = FastAPI()
 app.add_middleware(
@@ -18,25 +17,6 @@ DB_PATH = "database.db"
 def get_conn():
     return sqlite3.connect(DB_PATH)
 
-# MODELS
-class UsuarioModel(BaseModel):
-    nome: str
-    email: str
-    senha: str
-
-class ConexaoModel(BaseModel):
-    host: str
-    porta: str
-    usuario_banco: str
-    senha_banco: str
-    schema: str
-    intervalo_sync: int
-
-class LoginModel(BaseModel):
-    email: str
-    senha: str
-
-# INIT DB
 @app.on_event("startup")
 def init_db():
     with get_conn() as conn:
@@ -50,8 +30,7 @@ def init_db():
                 porta TEXT,
                 usuario_banco TEXT,
                 senha_banco TEXT,
-                schema TEXT,
-                intervalo_sync INTEGER DEFAULT 60
+                schema TEXT
             )
         """)
         conn.execute("""
@@ -61,67 +40,64 @@ def init_db():
                 coluna_origem TEXT,
                 tabela_destino TEXT,
                 coluna_destino TEXT,
-                tipo_relacionamento TEXT
+                tipo_relacionamento TEXT  -- 1:1, 1:N, etc.
             )
         """)
         conn.commit()
 
-# ROTAS USUÁRIOS
 @app.post("/usuarios")
-def criar_usuario(usuario: UsuarioModel):
+def cadastrar_usuario(usuario: Dict):
     with get_conn() as conn:
         try:
             conn.execute(
                 "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
-                (usuario.nome, usuario.email, usuario.senha)
+                (usuario['nome'], usuario['email'], usuario['senha'])
             )
             conn.commit()
+            return {"ok": True}
         except sqlite3.IntegrityError:
             raise HTTPException(status_code=400, detail="Email já cadastrado")
-    return {"ok": True}
 
 @app.post("/login")
-def login(login: LoginModel):
-    with get_conn() as conn:
-        user = conn.execute(
-            "SELECT id, nome, email, host, porta, usuario_banco, senha_banco, schema, intervalo_sync FROM usuarios WHERE email=? AND senha=?",
-            (login.email, login.senha)
-        ).fetchone()
-        if not user:
-            raise HTTPException(status_code=401, detail="Credenciais inválidas")
-        return {
-            "id": user[0],
-            "nome": user[1],
-            "email": user[2],
-            "host": user[3],
-            "porta": user[4],
-            "usuario_banco": user[5],
-            "senha_banco": user[6],
-            "schema": user[7],
-            "intervalo_sync": user[8]
-        }
-
-@app.put("/usuarios/{usuario_id}/conexao")
-def atualizar_conexao(usuario_id: int, conexao: ConexaoModel):
+def login(credentials: Dict):
     with get_conn() as conn:
         c = conn.cursor()
         c.execute(
-            """
-            UPDATE usuarios
-            SET host=?, porta=?, usuario_banco=?, senha_banco=?, schema=?, intervalo_sync=?
-            WHERE id=?
-            """,
+            "SELECT * FROM usuarios WHERE email = ? AND senha = ?",
+            (credentials["email"], credentials["senha"])
+        )
+        user = c.fetchone()
+        if user:
+            return {
+                "id": user[0],
+                "nome": user[1],
+                "email": user[2],
+                "host": user[4],
+                "porta": user[5],
+                "usuario_banco": user[6],
+                "senha_banco": user[7],
+                "schema": user[8]
+            }
+        else:
+            raise HTTPException(status_code=401, detail="Credenciais inválidas")
+
+@app.put("/usuarios/{id}/conexao")
+def atualizar_conexao(id: int, dados: Dict):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE usuarios SET host=?, porta=?, usuario_banco=?, senha_banco=?, schema=? WHERE id=?",
             (
-                conexao.host, conexao.porta, conexao.usuario_banco, conexao.senha_banco,
-                conexao.schema, conexao.intervalo_sync, usuario_id
+                dados.get("host"),
+                dados.get("porta"),
+                dados.get("usuario_banco"),
+                dados.get("senha_banco"),
+                dados.get("schema"),
+                id
             )
         )
-        if c.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Usuário não encontrado")
         conn.commit()
     return {"ok": True}
 
-# ROTAS RELACIONAMENTOS
 @app.get("/tabelas", response_model=List[str])
 def listar_tabelas():
     with get_conn() as conn:
@@ -166,3 +142,27 @@ def deletar_relacionamento(rel_id: int):
         conn.execute("DELETE FROM relacionamentos WHERE id=?", (rel_id,))
         conn.commit()
     return {"ok": True}
+
+@app.get("/indicadores")
+def indicadores(setor: str = Query(...)):
+    if setor.lower() == "financeiro":
+        return {
+            "Receitas do mês": 100000,
+            "Despesas do mês": 50000,
+            "Saldo em Caixa": 50000
+        }
+    elif setor.lower() == "comercial":
+        return {
+            "Pedidos fechados": 120,
+            "Clientes novos": 15,
+            "Ticket médio": 800
+        }
+    elif setor.lower() == "producao":
+        return {
+            "Peças produzidas": 6000,
+            "Horas trabalhadas": 900,
+            "Modelos diferentes": 25
+        }
+    else:
+        return {}
+
