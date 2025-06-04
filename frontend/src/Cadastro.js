@@ -1,38 +1,37 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { api } from "./api";
 
-
-function Cadastro() {
-  const [nome, setNome] = useState('');
-  const [email, setEmail] = useState('');
-  const [senha, setSenha] = useState('');
-  const [erro, setErro] = useState('');
+export default function Cadastro() {
+  const [form, setForm] = useState({ nome: "", email: "", senha: "" });
+  const [msg, setMsg] = useState("");
   const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
+  const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
+
+  const handleSubmit = async e => {
     e.preventDefault();
-    setErro('');
     try {
-      await cadastrar(nome, email, senha);
-      navigate('/login');
-    } catch {
-      setErro('Erro ao cadastrar');
+      await api.post("/usuarios", form);
+      setMsg("Cadastro realizado com sucesso. Faça login!");
+      setTimeout(() => navigate("/login"), 1200);
+    } catch (err) {
+      if (err?.response?.data?.detail) setMsg(err.response.data.detail);
+      else setMsg("Erro ao cadastrar.");
     }
   };
 
   return (
     <div className="container">
       <h2>Cadastro</h2>
-      <form onSubmit={handleSubmit}>
-        <input placeholder="Nome" value={nome} onChange={e => setNome(e.target.value)} />
-        <input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
-        <input placeholder="Senha" type="password" value={senha} onChange={e => setSenha(e.target.value)} />
+      <form onSubmit={handleSubmit} className="form">
+        <input name="nome" placeholder="Nome completo" value={form.nome} onChange={handleChange} />
+        <input name="email" placeholder="Email" value={form.email} onChange={handleChange} />
+        <input name="senha" type="password" placeholder="Senha" value={form.senha} onChange={handleChange} />
         <button type="submit">Cadastrar</button>
       </form>
-      {erro && <div className="erro">{erro}</div>}
-      <button onClick={() => navigate('/login')}>Voltar</button>
+      <button onClick={() => navigate("/login")}>Voltar ao Login</button>
+      {msg && <div className="info">{msg}</div>}
     </div>
   );
 }
-
-export default Cadastro;

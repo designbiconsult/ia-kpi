@@ -1,26 +1,24 @@
-import React from 'react';
+import React from "react";
 
-function SetorTabs({ setores, setor, setSetor }) {
+export default function SetorTabs({ setores, setor, setSetor }) {
   return (
-    <div style={{ marginBottom: 20 }}>
-      {setores.map(s =>
+    <div style={{ margin: "20px 0" }}>
+      {setores.map(s => (
         <button
           key={s}
           onClick={() => setSetor(s)}
           style={{
-            background: setor === s ? '#02848a' : '#eee',
-            color: setor === s ? '#fff' : '#222',
-            marginRight: 10,
-            padding: "6px 14px",
+            padding: "8px 16px",
+            marginRight: 8,
+            background: setor === s ? "#02848a" : "#f0f0f0",
+            color: setor === s ? "#fff" : "#333",
             border: "none",
-            borderRadius: 6,
-            cursor: "pointer"
-          }}>
+            borderRadius: 6
+          }}
+        >
           {s}
         </button>
-      )}
+      ))}
     </div>
   );
 }
-
-export default SetorTabs;

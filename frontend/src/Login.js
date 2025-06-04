@@ -1,39 +1,35 @@
 import React, { useState } from "react";
-import axios from "axios";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { api } from "./api";
 
-function Login({ onLogin }) {
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [erro, setErro] = useState("");
+export default function Login({ onLogin }) {
+  const [form, setForm] = useState({ email: "", senha: "" });
+  const [msg, setMsg] = useState("");
   const navigate = useNavigate();
 
-  const handleLogin = async (e) => {
+  const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
+
+  const handleSubmit = async e => {
     e.preventDefault();
-    setErro("");
     try {
-      const res = await axios.post("http://localhost:8000/login", { email, senha });
-      onLogin(res.data);
-      navigate("/");
-    } catch (err) {
-      setErro("Credenciais inválidas");
+      const { data } = await api.post("/login", form);
+      onLogin(data);
+      navigate("/dashboard");
+    } catch {
+      setMsg("Credenciais inválidas.");
     }
   };
 
   return (
-    <div style={{ maxWidth: 300, margin: "50px auto" }}>
+    <div className="container">
       <h2>Login</h2>
-      <form onSubmit={handleLogin}>
-        <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required className="form-control" />
-        <input type="password" placeholder="Senha" value={senha} onChange={e => setSenha(e.target.value)} required className="form-control" />
-        <button type="submit" className="btn btn-primary w-100 mt-2">Entrar</button>
+      <form onSubmit={handleSubmit} className="form">
+        <input name="email" placeholder="Email" value={form.email} onChange={handleChange} />
+        <input name="senha" type="password" placeholder="Senha" value={form.senha} onChange={handleChange} />
+        <button type="submit">Entrar</button>
       </form>
-      {erro && <div className="alert alert-danger mt-2">{erro}</div>}
-      <div className="mt-3 text-center">
-        <Link to="/cadastro">Não tem cadastro? Cadastre-se</Link>
-      </div>
+      <button onClick={() => navigate("/cadastro")}>Cadastre-se</button>
+      {msg && <div className="error">{msg}</div>}
     </div>
   );
 }
-
-export default Login;

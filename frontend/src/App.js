@@ -1,47 +1,49 @@
 import React, { useState, useEffect } from "react";
-import { BrowserRouter as Router, Route, Routes, Navigate, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./Login";
 import Cadastro from "./Cadastro";
 import Dashboard from "./Dashboard";
-import Conexao from "./Conexao";
-import Sincronizar from "./Sincronizar";
+import ConfigConexao from "./components/ConfigConexao";
+import SincronizarTabelas from "./components/SincronizarTabelas";
 
-function App() {
-  const [usuario, setUsuario] = useState(() => {
-    const u = localStorage.getItem("usuario");
-    return u ? JSON.parse(u) : null;
-  });
+export default function App() {
+  const [user, setUser] = useState(null);
 
-  const handleLogin = (user) => {
-    setUsuario(user);
-    localStorage.setItem("usuario", JSON.stringify(user));
+  // Mantém login após refresh
+  useEffect(() => {
+    const stored = localStorage.getItem("user");
+    if (stored) setUser(JSON.parse(stored));
+  }, []);
+
+  const handleLogin = (userObj) => {
+    setUser(userObj);
+    localStorage.setItem("user", JSON.stringify(userObj));
   };
 
   const handleLogout = () => {
-    setUsuario(null);
-    localStorage.removeItem("usuario");
+    setUser(null);
+    localStorage.removeItem("user");
   };
 
   return (
-    <Router>
+    <BrowserRouter>
       <Routes>
-        <Route
-          path="/"
-          element={usuario ? <Dashboard usuario={usuario} onLogout={handleLogout} /> : <Navigate to="/login" />}
-        />
+        <Route path="/" element={!user ? <Navigate to="/login" /> : <Navigate to="/dashboard" />} />
         <Route path="/login" element={<Login onLogin={handleLogin} />} />
         <Route path="/cadastro" element={<Cadastro />} />
         <Route
+          path="/dashboard"
+          element={user ? <Dashboard user={user} onLogout={handleLogout} /> : <Navigate to="/login" />}
+        />
+        <Route
           path="/conexao"
-          element={usuario ? <Conexao usuario={usuario} /> : <Navigate to="/login" />}
+          element={user ? <ConfigConexao user={user} onLogout={handleLogout} /> : <Navigate to="/login" />}
         />
         <Route
           path="/sincronizar"
-          element={usuario ? <Sincronizar usuario={usuario} /> : <Navigate to="/login" />}
+          element={user ? <SincronizarTabelas user={user} onLogout={handleLogout} /> : <Navigate to="/login" />}
         />
       </Routes>
-    </Router>
+    </BrowserRouter>
   );
 }
-
-export default App;

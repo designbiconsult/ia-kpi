@@ -1,22 +1,17 @@
-import React from 'react';
+import React from "react";
 
-function IndicadorCard({ indicador }) {
+export default function IndicadorCard({ titulo, valor }) {
   return (
     <div style={{
-      minWidth: 220,
-      minHeight: 90,
       border: "1px solid #eee",
       borderRadius: 10,
-      boxShadow: "0 1px 4px #0002",
-      margin: 10,
-      padding: 12,
-      background: "#fff"
+      padding: 24,
+      width: 220,
+      background: "#fafbfc",
+      boxShadow: "0 2px 6px #0001"
     }}>
-      <div><b>{indicador.nome}</b></div>
-      <div>{indicador.valor !== undefined ? indicador.valor : "Sem valor"}</div>
-      <div style={{ fontSize: 13, color: "#777" }}>{indicador.descricao}</div>
+      <div style={{ fontWeight: "bold", fontSize: 18 }}>{titulo}</div>
+      <div style={{ fontSize: 28, color: "#02848a", marginTop: 12 }}>{valor}</div>
     </div>
   );
 }
-
-export default IndicadorCard;

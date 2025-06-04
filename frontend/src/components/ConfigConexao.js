@@ -38,7 +38,7 @@ export default function ConfigConexao({ user, onLogout }) {
         <input name="usuario_banco" placeholder="Usuário" value={form.usuario_banco} onChange={handleChange} />
         <input name="senha_banco" type="password" placeholder="Senha" value={form.senha_banco} onChange={handleChange} />
         <input name="schema" placeholder="Schema" value={form.schema} onChange={handleChange} />
-        <input name="intervalo_sync" placeholder="Intervalo (min)" value={form.intervalo_sync} onChange={handleChange} />
+        <input name="intervalo_sync" type="number" placeholder="Intervalo (min)" value={form.intervalo_sync} onChange={handleChange} />
         <button type="submit">Salvar</button>
       </form>
       {msg && <div className="info">{msg}</div>}
