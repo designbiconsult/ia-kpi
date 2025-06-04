@@ -1,63 +1,58 @@
-import React from "react";
-import ReactFlow, { MiniMap, Controls, Background } from "react-flow-renderer";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
+import ReactFlow, { MiniMap, Controls, Background } from "reactflow";
+import "reactflow/dist/style.css";
 
-export default function Diagram({ tabelas, colunas, relacionamentos, setRelacionamentos }) {
-  const nodes = tabelas.map((tb, idx) => ({
-    id: tb,
-    data: { label: tb },
-    position: { x: 200 * idx, y: 100 },
-    style: { minWidth: 150, minHeight: 60, background: "#f0f4f8", border: "1px solid #02848a", borderRadius: 12, padding: 6 }
-  }));
+function Diagram() {
+  const [tables, setTables] = useState([]);
+  const [columns, setColumns] = useState({});
+  const [edges, setEdges] = useState([]);
+  const [nodes, setNodes] = useState([]);
 
-  const edges = relacionamentos.map(rel => ({
-    id: "edge_" + rel.id,
-    source: rel.tabela_origem,
-    sourceHandle: rel.coluna_origem,
-    target: rel.tabela_destino,
-    targetHandle: rel.coluna_destino,
-    label: rel.tipo_relacionamento,
-    animated: true,
-    style: { stroke: "#02848a" }
-  }));
-
-  const onConnect = (params) => {
-    const rel = {
-      tabela_origem: params.source,
-      coluna_origem: params.sourceHandle,
-      tabela_destino: params.target,
-      coluna_destino: params.targetHandle,
-      tipo_relacionamento: window.prompt("Tipo de relacionamento (1:1, 1:N, N:1, N:N)", "1:N") || "N:N"
-    };
-    axios.post("http://localhost:8000/relacionamentos", rel).then(() => {
-      axios.get("http://localhost:8000/relacionamentos").then(res => setRelacionamentos(res.data));
+  // Carregar tabelas e colunas
+  useEffect(() => {
+    axios.get("http://localhost:8000/tabelas").then(r => {
+      setTables(r.data);
+      r.data.forEach(tab => {
+        axios.get(`http://localhost:8000/colunas/${tab}`).then(res => {
+          setColumns(cols => ({ ...cols, [tab]: res.data }));
+        });
+      });
     });
-  };
+    axios.get("http://localhost:8000/relacionamentos").then(r => {
+      setEdges(r.data.map((rel, idx) => ({
+        id: "" + rel.id,
+        source: rel.tabela_origem,
+        target: rel.tabela_destino,
+        label: `${rel.coluna_origem} → ${rel.coluna_destino} (${rel.tipo_relacionamento})`,
+        animated: true,
+        style: { stroke: "#09c" },
+      })));
+    });
+  }, []);
 
-  const nodeTypes = {
-    default: ({ data, id }) => (
-      <div>
-        <div style={{ fontWeight: "bold", color: "#02848a", marginBottom: 8 }}>{data.label}</div>
-        {(colunas[id] || []).map(col => (
-          <div key={col} style={{ fontSize: 13, color: "#222" }}>
-            <span data-handle-id={col}>{col}</span>
-          </div>
-        ))}
-      </div>
-    )
-  };
+  // Criar nós das tabelas
+  useEffect(() => {
+    setNodes(
+      tables.map((t, idx) => ({
+        id: t,
+        position: { x: 100 + 250 * (idx % 3), y: 50 + 220 * Math.floor(idx / 3) },
+        data: { label: t + "\n" + (columns[t] || []).join(", ") },
+        style: { border: "1px solid #aaa", background: "#fff" }
+      }))
+    );
+  }, [tables, columns]);
 
   return (
-    <ReactFlow
-      elements={[...nodes, ...edges]}
-      nodeTypes={nodeTypes}
-      onConnect={onConnect}
-      snapToGrid={true}
-      style={{ width: "100vw", height: "90vh" }}
-    >
-      <MiniMap />
-      <Controls />
-      <Background />
-    </ReactFlow>
+    <div style={{ width: "100vw", height: "80vh", background: "#f6fafd" }}>
+      <h2 style={{ textAlign: "center" }}>Relacionamentos de Tabelas (Clique e arraste colunas)</h2>
+      <ReactFlow nodes={nodes} edges={edges} fitView>
+        <MiniMap />
+        <Controls />
+        <Background />
+      </ReactFlow>
+    </div>
   );
 }
+
+export default Diagram;

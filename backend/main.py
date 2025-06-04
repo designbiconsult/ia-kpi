@@ -1,7 +1,22 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-import sqlite3
 from typing import List, Dict
+from models import (
+    get_conn,
+    criar_tabelas,
+    autenticar_usuario,
+    cadastrar_usuario,
+    listar_tabelas,
+    listar_colunas,
+    listar_relacionamentos,
+    criar_relacionamento,
+    deletar_relacionamento,
+    listar_indicadores,
+    criar_indicador,
+    listar_indicadores_por_usuario,
+    sync_dados,
+)
+import uvicorn
 
 app = FastAPI()
 app.add_middleware(
@@ -12,67 +27,80 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_PATH = "database.db"
-
-def get_conn():
-    return sqlite3.connect(DB_PATH)
-
 @app.on_event("startup")
-def init_db():
-    with get_conn() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS relacionamentos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tabela_origem TEXT,
-                coluna_origem TEXT,
-                tabela_destino TEXT,
-                coluna_destino TEXT,
-                tipo_relacionamento TEXT  -- 1:1, 1:N, etc.
-            )
-        """)
-        conn.commit()
+def on_startup():
+    criar_tabelas()
 
-@app.get("/tabelas", response_model=List[str])
-def listar_tabelas():
-    with get_conn() as conn:
-        tabelas = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-        return [t[0] for t in tabelas if t[0] != 'relacionamentos']
+# ---- Usuários ----
 
-@app.get("/colunas/{tabela}", response_model=List[str])
-def listar_colunas(tabela: str):
-    with get_conn() as conn:
-        cols = conn.execute(f"PRAGMA table_info({tabela})").fetchall()
-        return [c[1] for c in cols]
+@app.post("/usuarios/login")
+def login_usuario(body: Dict):
+    email = body.get("email")
+    senha = body.get("senha")
+    user = autenticar_usuario(email, senha)
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuário ou senha inválidos.")
+    return user
 
-@app.get("/relacionamentos", response_model=List[Dict])
-def get_relacionamentos():
-    with get_conn() as conn:
-        rows = conn.execute("SELECT * FROM relacionamentos").fetchall()
-        return [
-            {
-                "id": r[0],
-                "tabela_origem": r[1],
-                "coluna_origem": r[2],
-                "tabela_destino": r[3],
-                "coluna_destino": r[4],
-                "tipo_relacionamento": r[5]
-            }
-            for r in rows
-        ]
+@app.post("/usuarios/cadastro")
+def cadastro_usuario(body: Dict):
+    nome = body.get("nome")
+    email = body.get("email")
+    senha = body.get("senha")
+    return cadastrar_usuario(nome, email, senha)
+
+# ---- Sincronização ----
+
+@app.post("/sync")
+def sync(usuario_id: int):
+    sync_dados(usuario_id)
+    return {"ok": True}
+
+# ---- Tabelas e Colunas ----
+
+@app.get("/tabelas")
+def get_tabelas():
+    return listar_tabelas()
+
+@app.get("/colunas/{tabela}")
+def get_colunas(tabela: str):
+    return listar_colunas(tabela)
+
+# ---- Relacionamentos ----
+
+@app.get("/relacionamentos")
+def get_rels():
+    return listar_relacionamentos()
 
 @app.post("/relacionamentos")
-def criar_relacionamento(rel: Dict):
-    with get_conn() as conn:
-        conn.execute(
-            "INSERT INTO relacionamentos (tabela_origem, coluna_origem, tabela_destino, coluna_destino, tipo_relacionamento) VALUES (?, ?, ?, ?, ?)",
-            (rel['tabela_origem'], rel['coluna_origem'], rel['tabela_destino'], rel['coluna_destino'], rel['tipo_relacionamento'])
-        )
-        conn.commit()
+def post_rel(rel: Dict):
+    criar_relacionamento(rel)
     return {"ok": True}
 
 @app.delete("/relacionamentos/{rel_id}")
-def deletar_relacionamento(rel_id: int):
-    with get_conn() as conn:
-        conn.execute("DELETE FROM relacionamentos WHERE id=?", (rel_id,))
-        conn.commit()
+def del_rel(rel_id: int):
+    deletar_relacionamento(rel_id)
     return {"ok": True}
+
+# ---- Indicadores ----
+
+@app.get("/indicadores/{usuario_id}/{setor}")
+def get_indicadores(usuario_id: int, setor: str):
+    return listar_indicadores_por_usuario(usuario_id, setor)
+
+@app.post("/indicadores/{usuario_id}/{setor}")
+def post_indicador(usuario_id: int, setor: str, nome: str, mapeamento: str):
+    criar_indicador(usuario_id, setor, nome, mapeamento)
+    return {"ok": True}
+
+# ---- Pergunta IA ----
+
+@app.post("/pergunta_ia")
+def pergunta_ia(request: Request, usuario_id: int, pergunta: str):
+    # Aqui você pode plugar o handler do LLM/IA local (chamando uma função ou script externo)
+    # Exemplo placeholder:
+    resposta = f"IA respondeu (placeholder): '{pergunta}'"
+    return {"resposta": resposta}
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", reload=True)
