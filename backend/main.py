@@ -7,7 +7,7 @@ from typing import List, Dict, Optional
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Em produção, restrinja!
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -15,7 +15,6 @@ app.add_middleware(
 
 DB_PATH = "database.db"
 
-# --- MODELOS PARA ENTRADA ---
 class UsuarioIn(BaseModel):
     nome: str
     email: str
@@ -25,6 +24,23 @@ class UsuarioLogin(BaseModel):
     email: str
     senha: str
 
+class ConfigConexaoIn(BaseModel):
+    usuario_id: int
+    host: str
+    porta: str
+    usuario_banco: str
+    senha_banco: str
+    schema: str
+    intervalo_sync: int
+
+class ConfigConexaoOut(BaseModel):
+    host: str
+    porta: str
+    usuario_banco: str
+    senha_banco: str
+    schema: str
+    intervalo_sync: int
+
 class RelacionamentoIn(BaseModel):
     tabela_origem: str
     coluna_origem: str
@@ -32,11 +48,9 @@ class RelacionamentoIn(BaseModel):
     coluna_destino: str
     tipo_relacionamento: str
 
-# --- CONEXÃO ---
 def get_conn():
     return sqlite3.connect(DB_PATH)
 
-# --- STARTUP: Criação das tabelas necessárias ---
 @app.on_event("startup")
 def init_db():
     with get_conn() as conn:
@@ -49,18 +63,28 @@ def init_db():
             )
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS configuracao_conexao (
+                usuario_id INTEGER PRIMARY KEY,
+                host TEXT,
+                porta TEXT,
+                usuario_banco TEXT,
+                senha_banco TEXT,
+                schema TEXT,
+                intervalo_sync INTEGER
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS relacionamentos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 tabela_origem TEXT,
                 coluna_origem TEXT,
                 tabela_destino TEXT,
                 coluna_destino TEXT,
-                tipo_relacionamento TEXT  -- 1:1, 1:N, etc.
+                tipo_relacionamento TEXT
             )
         """)
         conn.commit()
 
-# --- USUÁRIOS ---
 @app.post("/usuarios")
 def criar_usuario(usuario: UsuarioIn):
     with get_conn() as conn:
@@ -88,12 +112,48 @@ def login(login: UsuarioLogin):
             raise HTTPException(status_code=401, detail="Credenciais inválidas")
         return {"ok": True, "usuario": {"id": user[0], "nome": user[1], "email": user[2]}}
 
-# --- TABELAS & COLUNAS ---
+# --- Configuração de Conexão ---
+@app.post("/configuracao_conexao")
+def salvar_configuracao_conexao(cfg: ConfigConexaoIn):
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO configuracao_conexao (usuario_id, host, porta, usuario_banco, senha_banco, schema, intervalo_sync)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(usuario_id) DO UPDATE SET
+                host=excluded.host,
+                porta=excluded.porta,
+                usuario_banco=excluded.usuario_banco,
+                senha_banco=excluded.senha_banco,
+                schema=excluded.schema,
+                intervalo_sync=excluded.intervalo_sync
+        """, (cfg.usuario_id, cfg.host, cfg.porta, cfg.usuario_banco, cfg.senha_banco, cfg.schema, cfg.intervalo_sync))
+        conn.commit()
+    return {"ok": True}
+
+@app.get("/configuracao_conexao/{usuario_id}", response_model=ConfigConexaoOut)
+def get_configuracao_conexao(usuario_id: int):
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT host, porta, usuario_banco, senha_banco, schema, intervalo_sync FROM configuracao_conexao WHERE usuario_id=?", (usuario_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Configuração não encontrada")
+        return ConfigConexaoOut(
+            host=row[0],
+            porta=row[1],
+            usuario_banco=row[2],
+            senha_banco=row[3],
+            schema=row[4],
+            intervalo_sync=row[5]
+        )
+
+# --- Tabelas, Colunas e Relacionamentos ---
 @app.get("/tabelas", response_model=List[str])
 def listar_tabelas():
     with get_conn() as conn:
         tabelas = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-        return [t[0] for t in tabelas if t[0] not in ('relacionamentos', 'usuarios', 'sqlite_sequence')]
+        return [t[0] for t in tabelas if t[0] not in ('relacionamentos', 'usuarios', 'configuracao_conexao', 'sqlite_sequence')]
 
 @app.get("/colunas/{tabela}", response_model=List[str])
 def listar_colunas(tabela: str):
@@ -101,7 +161,6 @@ def listar_colunas(tabela: str):
         cols = conn.execute(f"PRAGMA table_info({tabela})").fetchall()
         return [c[1] for c in cols]
 
-# --- RELACIONAMENTOS ---
 @app.get("/relacionamentos", response_model=List[Dict])
 def get_relacionamentos():
     with get_conn() as conn:
@@ -135,12 +194,9 @@ def deletar_relacionamento(rel_id: int):
         conn.commit()
     return {"ok": True}
 
-# --- INDICADORES POR SETOR ---
 @app.get("/indicadores")
 def listar_indicadores(setor: str = Query(...)):
-    # Exemplo de lógica - adapte para buscar dados reais das tabelas sincronizadas
     if setor.lower() == "financeiro":
-        # Exemplo estático - troque por consultas reais ao seu banco!
         return [
             {"nome": "Receitas do mês", "valor": 0},
             {"nome": "Despesas do mês", "valor": 0},
@@ -149,12 +205,17 @@ def listar_indicadores(setor: str = Query(...)):
     elif setor.lower() == "comercial":
         return [
             {"nome": "Vendas do mês", "valor": 0},
-            {"nome": "Clientes novos", "valor": 0}
+            {"nome": "Clientes novos", "valor": 0},
+            {"nome": "Ticket médio", "valor": 0}
         ]
-    # Adicione outros setores conforme necessidade
+    elif setor.lower() == "producao":
+        return [
+            {"nome": "Peças produzidas", "valor": 0},
+            {"nome": "Modelos diferentes", "valor": 0},
+            {"nome": "Horas trabalhadas", "valor": 0}
+        ]
     return []
 
-# --- HEALTHCHECK (opcional) ---
 @app.get("/")
 def root():
     return {"status": "ok", "msg": "API IA-KPI backend rodando."}
