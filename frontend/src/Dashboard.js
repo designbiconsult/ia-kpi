@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import SetorTabs from './components/SetorTabs';
 import IndicadorCard from './components/IndicadorCard';
-import { listarIndicadores } from './api';
 import { useNavigate } from 'react-router-dom';
 
 const setores = ["Financeiro", "Comercial", "Produção"];
