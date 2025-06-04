@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import sqlite3
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 app = FastAPI()
 app.add_middleware(
@@ -112,7 +112,7 @@ def login(login: UsuarioLogin):
             raise HTTPException(status_code=401, detail="Credenciais inválidas")
         return {"ok": True, "usuario": {"id": user[0], "nome": user[1], "email": user[2]}}
 
-# --- Configuração de Conexão ---
+# Configuração de Conexão
 @app.post("/configuracao_conexao")
 def salvar_configuracao_conexao(cfg: ConfigConexaoIn):
     with get_conn() as conn:
@@ -148,7 +148,6 @@ def get_configuracao_conexao(usuario_id: int):
             intervalo_sync=row[5]
         )
 
-# --- Tabelas, Colunas e Relacionamentos ---
 @app.get("/tabelas", response_model=List[str])
 def listar_tabelas():
     with get_conn() as conn:
