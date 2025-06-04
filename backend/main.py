@@ -82,7 +82,7 @@ def login(credentials: Dict):
             raise HTTPException(status_code=401, detail="Credenciais inválidas")
 
 @app.put("/usuarios/{id}/conexao")
-def atualizar_conexao(id: int, dados: Dict):
+def atualizar_conexao(usuario_id: int, dados: dict):
     with get_conn() as conn:
         conn.execute(
             "UPDATE usuarios SET host=?, porta=?, usuario_banco=?, senha_banco=?, schema=? WHERE id=?",
