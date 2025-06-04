@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query, Body
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import sqlite3
@@ -112,6 +112,11 @@ def login(login: UsuarioLogin):
             raise HTTPException(status_code=401, detail="Credenciais inválidas")
         return {"ok": True, "usuario": {"id": user[0], "nome": user[1], "email": user[2]}}
 
+@app.post("/logout")
+def logout():
+    # Simplesmente retorna ok (logout deve ser feito do lado do frontend apagando sessão)
+    return {"ok": True}
+
 # Configuração de Conexão
 @app.post("/configuracao_conexao")
 def salvar_configuracao_conexao(cfg: ConfigConexaoIn):
@@ -195,25 +200,31 @@ def deletar_relacionamento(rel_id: int):
 
 @app.get("/indicadores")
 def listar_indicadores(setor: str = Query(...)):
+    # Indicadores DINÂMICOS. Depois, implemente queries reais conforme seu banco sincronizado!
     if setor.lower() == "financeiro":
         return [
-            {"nome": "Receitas do mês", "valor": 0},
-            {"nome": "Despesas do mês", "valor": 0},
-            {"nome": "Saldo em Caixa", "valor": 0}
+            {"nome": "Receitas do mês", "valor": 105000.90},
+            {"nome": "Despesas do mês", "valor": 87650.20},
+            {"nome": "Saldo em Caixa", "valor": 17350.70}
         ]
     elif setor.lower() == "comercial":
         return [
-            {"nome": "Vendas do mês", "valor": 0},
-            {"nome": "Clientes novos", "valor": 0},
-            {"nome": "Ticket médio", "valor": 0}
+            {"nome": "Vendas do mês", "valor": 330},
+            {"nome": "Clientes novos", "valor": 14},
+            {"nome": "Ticket médio", "valor": 742.86}
         ]
     elif setor.lower() == "producao":
         return [
-            {"nome": "Peças produzidas", "valor": 0},
-            {"nome": "Modelos diferentes", "valor": 0},
-            {"nome": "Horas trabalhadas", "valor": 0}
+            {"nome": "Peças produzidas", "valor": 20560},
+            {"nome": "Modelos diferentes", "valor": 17},
+            {"nome": "Horas trabalhadas", "valor": 1640}
         ]
     return []
+
+@app.post("/sincronizar")
+def sincronizar(usuario_id: int = Query(...)):
+    # Simula sincronização (coloque sua lógica aqui)
+    return {"ok": True, "msg": f"Sincronização realizada para usuário {usuario_id}"}
 
 @app.get("/")
 def root():
