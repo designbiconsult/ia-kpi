@@ -1,28 +1,35 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import Navbar from './Navbar';
-import IndicadoresSetor from './IndicadoresSetor';
+import React from "react";
+import { useNavigate } from "react-router-dom";
 
-const setores = ["Financeiro", "Comercial", "Produção"];
-
-export default function Dashboard({ user, onLogout }) {
-  const [setor, setSetor] = useState("Financeiro");
+function Dashboard({ usuario, onLogout }) {
   const navigate = useNavigate();
 
   return (
-    <div className="container">
-      <Navbar onLogout={onLogout} />
-      <h2>Bem-vindo, {user.nome}</h2>
-      <div style={{display: "flex", gap: 16, marginBottom: 24}}>
-        <button onClick={() => setSetor("Financeiro")}>Financeiro</button>
-        <button onClick={() => setSetor("Comercial")}>Comercial</button>
-        <button onClick={() => setSetor("Produção")}>Produção</button>
+    <div style={{ maxWidth: 800, margin: "40px auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h3>Bem-vindo, {usuario.nome}</h3>
+        <button className="btn btn-secondary" onClick={onLogout}>Sair</button>
       </div>
-      <IndicadoresSetor setor={setor} />
-      <div style={{marginTop: 32}}>
-        <button onClick={() => navigate("/config-conexao")}>Configurar Conexão</button>
-        <button style={{marginLeft: 16}} onClick={() => navigate("/sincronizar-tabelas")}>Sincronizar Tabelas</button>
+      <hr />
+      <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+        <button className="btn btn-info" onClick={() => navigate("/conexao")}>Configurar Conexão</button>
+        <button className="btn btn-warning" onClick={() => navigate("/sincronizar")}>Sincronizar Tabelas</button>
       </div>
+      <h4>Indicadores (exemplo)</h4>
+      <div className="row">
+        <div className="col">
+          <div className="card text-bg-light mb-3"><div className="card-body">Financeiro<br />Receitas do mês<br />R$ --</div></div>
+        </div>
+        <div className="col">
+          <div className="card text-bg-light mb-3"><div className="card-body">Financeiro<br />Despesas do mês<br />R$ --</div></div>
+        </div>
+        <div className="col">
+          <div className="card text-bg-light mb-3"><div className="card-body">Financeiro<br />Saldo em caixa<br />R$ --</div></div>
+        </div>
+      </div>
+      {/* Aqui adicione outros setores, cards, etc. */}
     </div>
   );
 }
+
+export default Dashboard;

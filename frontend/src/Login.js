@@ -1,36 +1,37 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { login } from './api';
+import React, { useState } from "react";
+import axios from "axios";
+import { useNavigate, Link } from "react-router-dom";
 
-function Login({ setUser }) {
-  const [email, setEmail] = useState('');
-  const [senha, setSenha] = useState('');
-  const [erro, setErro] = useState('');
+function Login({ onLogin }) {
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [erro, setErro] = useState("");
   const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    setErro('');
+    setErro("");
     try {
-      const res = await login(email, senha);
-      localStorage.setItem("user", JSON.stringify(res.data));
-      setUser(res.data);
-      navigate('/');
-    } catch {
-      setErro('Credenciais inválidas');
+      const res = await axios.post("http://localhost:8000/login", { email, senha });
+      onLogin(res.data);
+      navigate("/");
+    } catch (err) {
+      setErro("Credenciais inválidas");
     }
   };
 
   return (
-    <div className="container">
+    <div style={{ maxWidth: 300, margin: "50px auto" }}>
       <h2>Login</h2>
-      <form onSubmit={handleSubmit}>
-        <input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
-        <input placeholder="Senha" type="password" value={senha} onChange={e => setSenha(e.target.value)} />
-        <button type="submit">Entrar</button>
+      <form onSubmit={handleLogin}>
+        <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required className="form-control" />
+        <input type="password" placeholder="Senha" value={senha} onChange={e => setSenha(e.target.value)} required className="form-control" />
+        <button type="submit" className="btn btn-primary w-100 mt-2">Entrar</button>
       </form>
-      {erro && <div className="erro">{erro}</div>}
-      <button onClick={() => navigate('/cadastro')}>Cadastrar</button>
+      {erro && <div className="alert alert-danger mt-2">{erro}</div>}
+      <div className="mt-3 text-center">
+        <Link to="/cadastro">Não tem cadastro? Cadastre-se</Link>
+      </div>
     </div>
   );
 }

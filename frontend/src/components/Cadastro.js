@@ -1,39 +1,43 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { api } from '../api';
+import React, { useState } from "react";
+import axios from "axios";
+import { useNavigate, Link } from "react-router-dom";
 
-export default function Cadastro() {
+function Cadastro() {
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
-  const [msg, setMsg] = useState("");
+  const [erro, setErro] = useState("");
+  const [sucesso, setSucesso] = useState("");
   const navigate = useNavigate();
 
   const handleCadastro = async (e) => {
     e.preventDefault();
-    setMsg("");
+    setErro(""); setSucesso("");
     try {
-      await api.post('/usuarios', { nome, email, senha });
-      setMsg("Cadastro realizado! Faça login.");
-      setTimeout(() => navigate("/login"), 1500);
+      await axios.post("http://localhost:8000/usuarios", { nome, email, senha });
+      setSucesso("Cadastro realizado com sucesso!");
+      setTimeout(() => navigate("/login"), 1200);
     } catch (err) {
-      setMsg("Erro no cadastro (e-mail pode já existir).");
+      setErro(err.response?.data?.detail || "Erro ao cadastrar");
     }
   };
 
   return (
-    <div className="login-box">
+    <div style={{ maxWidth: 300, margin: "50px auto" }}>
       <h2>Cadastro</h2>
       <form onSubmit={handleCadastro}>
-        <input placeholder="Nome completo" value={nome} onChange={e => setNome(e.target.value)} />
-        <input placeholder="E-mail" value={email} onChange={e => setEmail(e.target.value)} />
-        <input type="password" placeholder="Senha" value={senha} onChange={e => setSenha(e.target.value)} />
-        <button type="submit">Cadastrar</button>
+        <input type="text" placeholder="Nome" value={nome} onChange={e => setNome(e.target.value)} required className="form-control" />
+        <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required className="form-control" />
+        <input type="password" placeholder="Senha" value={senha} onChange={e => setSenha(e.target.value)} required className="form-control" />
+        <button type="submit" className="btn btn-success w-100 mt-2">Cadastrar</button>
       </form>
-      {msg && <div className="error">{msg}</div>}
-      <p>
-        Já tem conta? <span className="link" onClick={() => navigate("/login")}>Entrar</span>
-      </p>
+      {erro && <div className="alert alert-danger mt-2">{erro}</div>}
+      {sucesso && <div className="alert alert-success mt-2">{sucesso}</div>}
+      <div className="mt-3 text-center">
+        <Link to="/login">Já tem cadastro? Login</Link>
+      </div>
     </div>
   );
 }
+
+export default Cadastro;

@@ -1,33 +1,44 @@
-import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import Login from './components/Login';
-import Cadastro from './components/Cadastro';
-import Dashboard from './components/Dashboard';
-import ConfigConexao from './components/ConfigConexao';
-import SincronizarTabelas from './components/SincronizarTabelas';
+import React, { useState, useEffect } from "react";
+import { BrowserRouter as Router, Route, Routes, Navigate, useNavigate } from "react-router-dom";
+import Login from "./Login";
+import Cadastro from "./Cadastro";
+import Dashboard from "./Dashboard";
+import Conexao from "./Conexao";
+import Sincronizar from "./Sincronizar";
 
 function App() {
-  const [user, setUser] = useState(JSON.parse(localStorage.getItem("usuario")) || null);
+  const [usuario, setUsuario] = useState(() => {
+    const u = localStorage.getItem("usuario");
+    return u ? JSON.parse(u) : null;
+  });
 
-  const handleLogin = (usuario) => {
-    setUser(usuario);
-    localStorage.setItem("usuario", JSON.stringify(usuario));
+  const handleLogin = (user) => {
+    setUsuario(user);
+    localStorage.setItem("usuario", JSON.stringify(user));
   };
 
   const handleLogout = () => {
-    setUser(null);
+    setUsuario(null);
     localStorage.removeItem("usuario");
   };
 
   return (
     <Router>
       <Routes>
+        <Route
+          path="/"
+          element={usuario ? <Dashboard usuario={usuario} onLogout={handleLogout} /> : <Navigate to="/login" />}
+        />
         <Route path="/login" element={<Login onLogin={handleLogin} />} />
         <Route path="/cadastro" element={<Cadastro />} />
-        <Route path="/dashboard" element={user ? <Dashboard user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} />
-        <Route path="/config-conexao" element={user ? <ConfigConexao user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} />
-        <Route path="/sincronizar-tabelas" element={user ? <SincronizarTabelas user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} />
-        <Route path="*" element={<Navigate to={user ? "/dashboard" : "/login"} />} />
+        <Route
+          path="/conexao"
+          element={usuario ? <Conexao usuario={usuario} /> : <Navigate to="/login" />}
+        />
+        <Route
+          path="/sincronizar"
+          element={usuario ? <Sincronizar usuario={usuario} /> : <Navigate to="/login" />}
+        />
       </Routes>
     </Router>
   );
