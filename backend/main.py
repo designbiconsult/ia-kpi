@@ -1,8 +1,8 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
-import sqlite3
-from typing import List, Dict
 from pydantic import BaseModel
+import sqlite3
+from typing import List, Dict, Optional
 
 app = FastAPI()
 app.add_middleware(
@@ -15,22 +15,39 @@ app.add_middleware(
 
 DB_PATH = "database.db"
 
+# --- MODELOS PARA ENTRADA ---
+class UsuarioIn(BaseModel):
+    nome: str
+    email: str
+    senha: str
+
+class UsuarioLogin(BaseModel):
+    email: str
+    senha: str
+
+class RelacionamentoIn(BaseModel):
+    tabela_origem: str
+    coluna_origem: str
+    tabela_destino: str
+    coluna_destino: str
+    tipo_relacionamento: str
+
+# --- CONEXÃO ---
 def get_conn():
     return sqlite3.connect(DB_PATH)
 
+# --- STARTUP: Criação das tabelas necessárias ---
 @app.on_event("startup")
 def init_db():
     with get_conn() as conn:
-        # Tabela de usuários
         conn.execute("""
             CREATE TABLE IF NOT EXISTS usuarios (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nome TEXT NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                senha TEXT NOT NULL
+                nome TEXT,
+                email TEXT UNIQUE,
+                senha TEXT
             )
         """)
-        # Tabela de relacionamentos
         conn.execute("""
             CREATE TABLE IF NOT EXISTS relacionamentos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,52 +60,40 @@ def init_db():
         """)
         conn.commit()
 
-# ----------- MODELOS -----------
-
-class UsuarioCadastro(BaseModel):
-    nome: str
-    email: str
-    senha: str
-
-class UsuarioLogin(BaseModel):
-    email: str
-    senha: str
-
-# ----------- ENDPOINTS USUÁRIO -----------
-
+# --- USUÁRIOS ---
 @app.post("/usuarios")
-def cadastrar_usuario(usuario: UsuarioCadastro):
+def criar_usuario(usuario: UsuarioIn):
     with get_conn() as conn:
+        cursor = conn.cursor()
         try:
-            conn.execute(
+            cursor.execute(
                 "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
                 (usuario.nome, usuario.email, usuario.senha)
             )
             conn.commit()
+            return {"ok": True, "usuario_id": cursor.lastrowid}
         except sqlite3.IntegrityError:
             raise HTTPException(status_code=400, detail="Email já cadastrado")
-    return {"ok": True}
 
 @app.post("/login")
-def login(usuario: UsuarioLogin):
+def login(login: UsuarioLogin):
     with get_conn() as conn:
-        row = conn.execute(
-            "SELECT * FROM usuarios WHERE email=? AND senha=?",
-            (usuario.email, usuario.senha)
-        ).fetchone()
-    if row:
-        return {"ok": True, "usuario": {"id": row[0], "nome": row[1], "email": row[2]}}
-    else:
-        raise HTTPException(status_code=401, detail="Credenciais inválidas")
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, nome, email FROM usuarios WHERE email = ? AND senha = ?",
+            (login.email, login.senha)
+        )
+        user = cursor.fetchone()
+        if not user:
+            raise HTTPException(status_code=401, detail="Credenciais inválidas")
+        return {"ok": True, "usuario": {"id": user[0], "nome": user[1], "email": user[2]}}
 
-# ----------- ENDPOINTS TABELAS E RELACIONAMENTOS -----------
-
+# --- TABELAS & COLUNAS ---
 @app.get("/tabelas", response_model=List[str])
 def listar_tabelas():
     with get_conn() as conn:
         tabelas = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-        # Remove tabelas internas
-        return [t[0] for t in tabelas if t[0] not in ['relacionamentos', 'usuarios', 'sqlite_sequence']]
+        return [t[0] for t in tabelas if t[0] not in ('relacionamentos', 'usuarios', 'sqlite_sequence')]
 
 @app.get("/colunas/{tabela}", response_model=List[str])
 def listar_colunas(tabela: str):
@@ -96,6 +101,7 @@ def listar_colunas(tabela: str):
         cols = conn.execute(f"PRAGMA table_info({tabela})").fetchall()
         return [c[1] for c in cols]
 
+# --- RELACIONAMENTOS ---
 @app.get("/relacionamentos", response_model=List[Dict])
 def get_relacionamentos():
     with get_conn() as conn:
@@ -113,11 +119,11 @@ def get_relacionamentos():
         ]
 
 @app.post("/relacionamentos")
-def criar_relacionamento(rel: Dict):
+def criar_relacionamento(rel: RelacionamentoIn):
     with get_conn() as conn:
         conn.execute(
             "INSERT INTO relacionamentos (tabela_origem, coluna_origem, tabela_destino, coluna_destino, tipo_relacionamento) VALUES (?, ?, ?, ?, ?)",
-            (rel['tabela_origem'], rel['coluna_origem'], rel['tabela_destino'], rel['coluna_destino'], rel['tipo_relacionamento'])
+            (rel.tabela_origem, rel.coluna_origem, rel.tabela_destino, rel.coluna_destino, rel.tipo_relacionamento)
         )
         conn.commit()
     return {"ok": True}
@@ -128,3 +134,27 @@ def deletar_relacionamento(rel_id: int):
         conn.execute("DELETE FROM relacionamentos WHERE id=?", (rel_id,))
         conn.commit()
     return {"ok": True}
+
+# --- INDICADORES POR SETOR ---
+@app.get("/indicadores")
+def listar_indicadores(setor: str = Query(...)):
+    # Exemplo de lógica - adapte para buscar dados reais das tabelas sincronizadas
+    if setor.lower() == "financeiro":
+        # Exemplo estático - troque por consultas reais ao seu banco!
+        return [
+            {"nome": "Receitas do mês", "valor": 0},
+            {"nome": "Despesas do mês", "valor": 0},
+            {"nome": "Saldo em Caixa", "valor": 0}
+        ]
+    elif setor.lower() == "comercial":
+        return [
+            {"nome": "Vendas do mês", "valor": 0},
+            {"nome": "Clientes novos", "valor": 0}
+        ]
+    # Adicione outros setores conforme necessidade
+    return []
+
+# --- HEALTHCHECK (opcional) ---
+@app.get("/")
+def root():
+    return {"status": "ok", "msg": "API IA-KPI backend rodando."}
