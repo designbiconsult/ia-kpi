@@ -1,39 +1,36 @@
-import React, { useState } from "react";
-import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { cadastrar } from './api';
 
 function Cadastro() {
-  const [nome, setNome] = useState("");
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [erro, setErro] = useState("");
-  const [sucesso, setSucesso] = useState("");
+  const [nome, setNome] = useState('');
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+  const [erro, setErro] = useState('');
   const navigate = useNavigate();
 
-  const handleSubmit = async e => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setErro("");
-    setSucesso("");
+    setErro('');
     try {
-      await axios.post("http://localhost:8000/usuarios/cadastro", { nome, email, senha });
-      setSucesso("Cadastro realizado! Faça login.");
-      setTimeout(() => navigate("/login"), 1000);
-    } catch (err) {
-      setErro("Erro ao cadastrar. Email já usado?");
+      await cadastrar(nome, email, senha);
+      navigate('/login');
+    } catch {
+      setErro('Erro ao cadastrar');
     }
   };
 
   return (
-    <div style={{ maxWidth: 400, margin: "50px auto" }}>
+    <div className="container">
       <h2>Cadastro</h2>
       <form onSubmit={handleSubmit}>
-        <input placeholder="Nome" value={nome} onChange={e => setNome(e.target.value)} style={{ width: "100%", marginBottom: 12 }} />
-        <input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} style={{ width: "100%", marginBottom: 12 }} />
-        <input type="password" placeholder="Senha" value={senha} onChange={e => setSenha(e.target.value)} style={{ width: "100%", marginBottom: 12 }} />
-        <button type="submit" style={{ width: "100%" }}>Cadastrar</button>
+        <input placeholder="Nome" value={nome} onChange={e => setNome(e.target.value)} />
+        <input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
+        <input placeholder="Senha" type="password" value={senha} onChange={e => setSenha(e.target.value)} />
+        <button type="submit">Cadastrar</button>
       </form>
-      {erro && <div style={{ color: "red", marginTop: 12 }}>{erro}</div>}
-      {sucesso && <div style={{ color: "green", marginTop: 12 }}>{sucesso}</div>}
+      {erro && <div className="erro">{erro}</div>}
+      <button onClick={() => navigate('/login')}>Voltar</button>
     </div>
   );
 }

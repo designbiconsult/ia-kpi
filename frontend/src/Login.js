@@ -1,35 +1,36 @@
-import React, { useState } from "react";
-import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { login } from './api';
 
-function Login({ setLogado }) {
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [erro, setErro] = useState("");
+function Login({ setUser }) {
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+  const [erro, setErro] = useState('');
   const navigate = useNavigate();
 
-  const handleSubmit = async e => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setErro("");
+    setErro('');
     try {
-      const resp = await axios.post("http://localhost:8000/usuarios/login", { email, senha });
-      localStorage.setItem("usuario", JSON.stringify(resp.data));
-      setLogado(true);
-      navigate("/indicators");
-    } catch (err) {
-      setErro("Usuário ou senha inválidos.");
+      const res = await login(email, senha);
+      localStorage.setItem("user", JSON.stringify(res.data));
+      setUser(res.data);
+      navigate('/');
+    } catch {
+      setErro('Credenciais inválidas');
     }
   };
 
   return (
-    <div style={{ maxWidth: 400, margin: "50px auto" }}>
+    <div className="container">
       <h2>Login</h2>
       <form onSubmit={handleSubmit}>
-        <input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} style={{ width: "100%", marginBottom: 12 }} />
-        <input type="password" placeholder="Senha" value={senha} onChange={e => setSenha(e.target.value)} style={{ width: "100%", marginBottom: 12 }} />
-        <button type="submit" style={{ width: "100%" }}>Entrar</button>
+        <input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
+        <input placeholder="Senha" type="password" value={senha} onChange={e => setSenha(e.target.value)} />
+        <button type="submit">Entrar</button>
       </form>
-      {erro && <div style={{ color: "red", marginTop: 12 }}>{erro}</div>}
+      {erro && <div className="erro">{erro}</div>}
+      <button onClick={() => navigate('/cadastro')}>Cadastrar</button>
     </div>
   );
 }

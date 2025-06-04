@@ -1,58 +1,40 @@
-import React, { useEffect, useState } from "react";
-import axios from "axios";
-import ReactFlow, { MiniMap, Controls, Background } from "reactflow";
-import "reactflow/dist/style.css";
+import React, { useEffect, useState } from 'react';
+import ReactFlow, { Controls, Background } from 'reactflow';
+import 'reactflow/dist/style.css';
+import { listarTabelas, listarColunas, listarRelacionamentos, criarRelacionamento, deletarRelacionamento } from './api';
 
-function Diagram() {
-  const [tables, setTables] = useState([]);
-  const [columns, setColumns] = useState({});
-  const [edges, setEdges] = useState([]);
-  const [nodes, setNodes] = useState([]);
+function Diagram({ user }) {
+  const [tabelas, setTabelas] = useState([]);
+  const [colunas, setColunas] = useState({});
+  const [relacionamentos, setRelacionamentos] = useState([]);
 
-  // Carregar tabelas e colunas
+  // Carregar tabelas e relacionamentos ao montar
   useEffect(() => {
-    axios.get("http://localhost:8000/tabelas").then(r => {
-      setTables(r.data);
-      r.data.forEach(tab => {
-        axios.get(`http://localhost:8000/colunas/${tab}`).then(res => {
-          setColumns(cols => ({ ...cols, [tab]: res.data }));
-        });
-      });
-    });
-    axios.get("http://localhost:8000/relacionamentos").then(r => {
-      setEdges(r.data.map((rel, idx) => ({
-        id: "" + rel.id,
-        source: rel.tabela_origem,
-        target: rel.tabela_destino,
-        label: `${rel.coluna_origem} → ${rel.coluna_destino} (${rel.tipo_relacionamento})`,
-        animated: true,
-        style: { stroke: "#09c" },
-      })));
-    });
+    listarTabelas().then(res => setTabelas(res.data));
+    listarRelacionamentos().then(res => setRelacionamentos(res.data));
   }, []);
 
-  // Criar nós das tabelas
   useEffect(() => {
-    setNodes(
-      tables.map((t, idx) => ({
-        id: t,
-        position: { x: 100 + 250 * (idx % 3), y: 50 + 220 * Math.floor(idx / 3) },
-        data: { label: t + "\n" + (columns[t] || []).join(", ") },
-        style: { border: "1px solid #aaa", background: "#fff" }
-      }))
-    );
-  }, [tables, columns]);
+    // Carregar colunas para cada tabela
+    tabelas.forEach(tb => {
+      if (!colunas[tb]) {
+        listarColunas(tb).then(res =>
+          setColunas(c => ({ ...c, [tb]: res.data }))
+        );
+      }
+    });
+  }, [tabelas]);
 
+  // Aqui você implementaria a lógica de drag&drop (exemplo básico abaixo)
   return (
-    <div style={{ width: "100vw", height: "80vh", background: "#f6fafd" }}>
-      <h2 style={{ textAlign: "center" }}>Relacionamentos de Tabelas (Clique e arraste colunas)</h2>
-      <ReactFlow nodes={nodes} edges={edges} fitView>
-        <MiniMap />
+    <div className="container">
+      <h2>Relacionamentos de Tabelas (Clique e arraste colunas)</h2>
+      <ReactFlow nodes={[]} edges={[]} fitView>
         <Controls />
         <Background />
       </ReactFlow>
+      {/* Você vai evoluir para montar os nodes/edges de verdade */}
     </div>
   );
 }
-
 export default Diagram;
