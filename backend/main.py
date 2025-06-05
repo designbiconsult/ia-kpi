@@ -134,10 +134,35 @@ def listar_tabelas():
         return [t[0] for t in tabelas if t[0] not in ['relacionamentos', 'usuarios', 'sqlite_sequence']]
 
 @app.get("/tabelas-remotas", response_model=List[str])
-def listar_tabelas_remotas():
-    # Substitua esse trecho pelo seu mecanismo real de busca de tabelas remotas
-    # Por enquanto, retorna uma lista de exemplo:
-    return ["VW_CTO_PRODUTO", "VW_CTO_ORDEM_PRODUCAO_ITEM", "VW_CTO_FINAN"]
+def listar_tabelas_remotas(usuario_id: int):
+    # Pega os dados da conexão do usuário salvo no banco SQLite
+    with get_conn() as conn:
+        user = conn.execute(
+            "SELECT host, porta, usuario_banco, senha_banco, schema FROM usuarios WHERE id=?",
+            (usuario_id,)
+        ).fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="Usuário não encontrado")
+        host, porta, usuario, senha, schema = user
+
+    # Conecta no banco MySQL do cliente
+    try:
+        conn_mysql = mysql.connector.connect(
+            host=host,
+            port=int(porta),
+            user=usuario,
+            password=senha,
+            database=schema
+        )
+        cur = conn_mysql.cursor()
+        cur.execute("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE' OR Table_type = 'VIEW'")
+        # O nome da coluna de resultado muda conforme o banco, então pegue sempre o primeiro valor da linha
+        tabelas = [row[0] for row in cur.fetchall()]
+        cur.close()
+        conn_mysql.close()
+        return tabelas
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao conectar no banco remoto: {e}")
 
 @app.get("/colunas/{tabela}", response_model=List[str])
 def listar_colunas(tabela: str):
