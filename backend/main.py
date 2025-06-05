@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
-from typing import List, Dict, Optional
+from typing import List, Dict
 import mysql.connector
 
 app = FastAPI()
@@ -82,8 +82,8 @@ def login(credentials: dict = Body(...)):
         else:
             raise HTTPException(status_code=401, detail="Credenciais inválidas")
 
-@app.put("/usuarios/{usuario_id}/conexao")
-def atualizar_conexao(usuario_id: int, dados: dict = Body(...)):
+@app.put("/usuarios/{id}/conexao")
+def atualizar_conexao(id: int, dados: dict):
     with get_conn() as conn:
         conn.execute(
             "UPDATE usuarios SET host=?, porta=?, usuario_banco=?, senha_banco=?, schema=? WHERE id=?",
@@ -93,49 +93,15 @@ def atualizar_conexao(usuario_id: int, dados: dict = Body(...)):
                 dados.get("usuario_banco"),
                 dados.get("senha_banco"),
                 dados.get("schema"),
-                usuario_id
+                id
             )
         )
         conn.commit()
     return {"ok": True}
 
-@app.get("/tabelas_remotas")
-def tabelas_remotas(usuario_id: int):
-    # Busca as credenciais do usuário
-    with get_conn() as conn:
-        user = conn.execute("SELECT host, porta, usuario_banco, senha_banco, schema FROM usuarios WHERE id=?", (usuario_id,)).fetchone()
-        if not user or not all(user):
-            raise HTTPException(status_code=400, detail="Credenciais de banco não configuradas.")
-
-        host, porta, usuario_banco, senha_banco, schema = user
-
-    try:
-        db = mysql.connector.connect(
-            host=host,
-            port=int(porta),
-            user=usuario_banco,
-            password=senha_banco,
-            database=schema
-        )
-        cur = db.cursor()
-        cur.execute("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE' OR Table_type = 'VIEW'")
-        result = cur.fetchall()
-        tabelas = [row[0] for row in result]
-        cur.close()
-        db.close()
-        return tabelas
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao conectar ao banco remoto: {e}")
-
-@app.get("/tabelas", response_model=List[str])
-def listar_tabelas():
-    with get_conn() as conn:
-        tabelas = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-        return [t[0] for t in tabelas if t[0] not in ['relacionamentos', 'usuarios', 'sqlite_sequence']]
-
 @app.get("/tabelas-remotas", response_model=List[str])
-def listar_tabelas_remotas(usuario_id: int):
-    # Pega os dados da conexão do usuário salvo no banco SQLite
+def listar_tabelas_remotas(usuario_id: int = Query(...)):
+    # Busca os dados de conexão do usuário no SQLite
     with get_conn() as conn:
         user = conn.execute(
             "SELECT host, porta, usuario_banco, senha_banco, schema FROM usuarios WHERE id=?",
@@ -145,7 +111,7 @@ def listar_tabelas_remotas(usuario_id: int):
             raise HTTPException(status_code=404, detail="Usuário não encontrado")
         host, porta, usuario, senha, schema = user
 
-    # Conecta no banco MySQL do cliente
+    # Conecta no banco MySQL remoto
     try:
         conn_mysql = mysql.connector.connect(
             host=host,
@@ -156,7 +122,6 @@ def listar_tabelas_remotas(usuario_id: int):
         )
         cur = conn_mysql.cursor()
         cur.execute("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE' OR Table_type = 'VIEW'")
-        # O nome da coluna de resultado muda conforme o banco, então pegue sempre o primeiro valor da linha
         tabelas = [row[0] for row in cur.fetchall()]
         cur.close()
         conn_mysql.close()
@@ -225,4 +190,3 @@ def indicadores(setor: str = Query(...)):
         }
     else:
         return {}
-
