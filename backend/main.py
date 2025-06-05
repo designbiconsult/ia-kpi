@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 from typing import List, Dict
@@ -59,7 +59,7 @@ def cadastrar_usuario(usuario: Dict):
             raise HTTPException(status_code=400, detail="Email já cadastrado")
 
 @app.post("/login")
-def login(credentials: Dict):
+def login(credentials: dict = Body(...)):
     with get_conn() as conn:
         c = conn.cursor()
         c.execute(
