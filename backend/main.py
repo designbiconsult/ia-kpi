@@ -77,12 +77,12 @@ def cadastrar_usuario(usuario: UsuarioIn):
             raise HTTPException(status_code=400, detail="Email já cadastrado")
 
 @app.post("/login")
-def login(credentials: LoginIn):
+def login(credentials: dict = Body(...)):
     with get_conn() as conn:
         c = conn.cursor()
         c.execute(
             "SELECT * FROM usuarios WHERE email = ? AND senha = ?",
-            (credentials.email, credentials.senha)
+            (credentials["email"], credentials["senha"])
         )
         user = c.fetchone()
         if not user:
@@ -96,7 +96,7 @@ def login(credentials: LoginIn):
             "usuario_banco": user[6],
             "senha_banco": user[7],
             "schema": user[8]
-            }
+        }
         
 @app.put("/usuarios/{usuario_id}/conexao")
 def atualizar_conexao(usuario_id: int, dados: ConexaoIn):
