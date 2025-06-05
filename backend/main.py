@@ -85,20 +85,19 @@ def login(credentials: LoginIn):
             (credentials.email, credentials.senha)
         )
         user = c.fetchone()
-        if user:
-            return {
-                "id": user[0],
-                "nome": user[1],
-                "email": user[2],
-                "host": user[4],
-                "porta": user[5],
-                "usuario_banco": user[6],
-                "senha_banco": user[7],
-                "schema": user[8]
-            }
-        else:
+        if not user:
             raise HTTPException(status_code=401, detail="Credenciais inválidas")
-
+        return {
+            "id": user[0],
+            "nome": user[1],
+            "email": user[2],
+            "host": user[4],
+            "porta": user[5],
+            "usuario_banco": user[6],
+            "senha_banco": user[7],
+            "schema": user[8]
+            }
+        
 @app.put("/usuarios/{usuario_id}/conexao")
 def atualizar_conexao(usuario_id: int, dados: ConexaoIn):
     with get_conn() as conn:
