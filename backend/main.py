@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException, Query, Body
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import sqlite3
 from typing import List, Dict
 
@@ -16,6 +17,23 @@ DB_PATH = "database.db"
 
 def get_conn():
     return sqlite3.connect(DB_PATH)
+
+# MODELS Pydantic
+class UsuarioIn(BaseModel):
+    nome: str
+    email: str
+    senha: str
+
+class LoginIn(BaseModel):
+    email: str
+    senha: str
+
+class ConexaoIn(BaseModel):
+    host: str
+    porta: str
+    usuario_banco: str
+    senha_banco: str
+    schema: str
 
 @app.on_event("startup")
 def init_db():
@@ -46,12 +64,12 @@ def init_db():
         conn.commit()
 
 @app.post("/usuarios")
-def cadastrar_usuario(usuario: Dict):
+def cadastrar_usuario(usuario: UsuarioIn):
     with get_conn() as conn:
         try:
             conn.execute(
                 "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
-                (usuario['nome'], usuario['email'], usuario['senha'])
+                (usuario.nome, usuario.email, usuario.senha)
             )
             conn.commit()
             return {"ok": True}
@@ -59,12 +77,12 @@ def cadastrar_usuario(usuario: Dict):
             raise HTTPException(status_code=400, detail="Email já cadastrado")
 
 @app.post("/login")
-def login(credentials: dict = Body(...)):
+def login(credentials: LoginIn):
     with get_conn() as conn:
         c = conn.cursor()
         c.execute(
             "SELECT * FROM usuarios WHERE email = ? AND senha = ?",
-            (credentials["email"], credentials["senha"])
+            (credentials.email, credentials.senha)
         )
         user = c.fetchone()
         if user:
@@ -81,18 +99,18 @@ def login(credentials: dict = Body(...)):
         else:
             raise HTTPException(status_code=401, detail="Credenciais inválidas")
 
-@app.put("/usuarios/{id}/conexao")
-def atualizar_conexao(usuario_id: int, dados: dict):
+@app.put("/usuarios/{usuario_id}/conexao")
+def atualizar_conexao(usuario_id: int, dados: ConexaoIn):
     with get_conn() as conn:
         conn.execute(
             "UPDATE usuarios SET host=?, porta=?, usuario_banco=?, senha_banco=?, schema=? WHERE id=?",
             (
-                dados.get("host"),
-                dados.get("porta"),
-                dados.get("usuario_banco"),
-                dados.get("senha_banco"),
-                dados.get("schema"),
-                id
+                dados.host,
+                dados.porta,
+                dados.usuario_banco,
+                dados.senha_banco,
+                dados.schema,
+                usuario_id
             )
         )
         conn.commit()
@@ -165,4 +183,3 @@ def indicadores(setor: str = Query(...)):
         }
     else:
         return {}
-
