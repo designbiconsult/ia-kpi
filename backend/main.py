@@ -1,13 +1,13 @@
 from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import sqlite3
-from typing import List, Dict
+from typing import List, Dict, Optional
+import mysql.connector
 
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Em produção, restrinja!
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -17,23 +17,6 @@ DB_PATH = "database.db"
 
 def get_conn():
     return sqlite3.connect(DB_PATH)
-
-# MODELS Pydantic
-class UsuarioIn(BaseModel):
-    nome: str
-    email: str
-    senha: str
-
-class LoginIn(BaseModel):
-    email: str
-    senha: str
-
-class ConexaoIn(BaseModel):
-    host: str
-    porta: str
-    usuario_banco: str
-    senha_banco: str
-    schema: str
 
 @app.on_event("startup")
 def init_db():
@@ -58,18 +41,18 @@ def init_db():
                 coluna_origem TEXT,
                 tabela_destino TEXT,
                 coluna_destino TEXT,
-                tipo_relacionamento TEXT  -- 1:1, 1:N, etc.
+                tipo_relacionamento TEXT
             )
         """)
         conn.commit()
 
 @app.post("/usuarios")
-def cadastrar_usuario(usuario: UsuarioIn):
+def cadastrar_usuario(usuario: Dict):
     with get_conn() as conn:
         try:
             conn.execute(
                 "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
-                (usuario.nome, usuario.email, usuario.senha)
+                (usuario['nome'], usuario['email'], usuario['senha'])
             )
             conn.commit()
             return {"ok": True}
@@ -85,41 +68,76 @@ def login(credentials: dict = Body(...)):
             (credentials["email"], credentials["senha"])
         )
         user = c.fetchone()
-        if not user:
+        if user:
+            return {
+                "id": user[0],
+                "nome": user[1],
+                "email": user[2],
+                "host": user[4],
+                "porta": user[5],
+                "usuario_banco": user[6],
+                "senha_banco": user[7],
+                "schema": user[8]
+            }
+        else:
             raise HTTPException(status_code=401, detail="Credenciais inválidas")
-        return {
-            "id": user[0],
-            "nome": user[1],
-            "email": user[2],
-            "host": user[4],
-            "porta": user[5],
-            "usuario_banco": user[6],
-            "senha_banco": user[7],
-            "schema": user[8]
-        }
-        
+
 @app.put("/usuarios/{usuario_id}/conexao")
-def atualizar_conexao(usuario_id: int, dados: ConexaoIn):
+def atualizar_conexao(usuario_id: int, dados: dict = Body(...)):
     with get_conn() as conn:
         conn.execute(
             "UPDATE usuarios SET host=?, porta=?, usuario_banco=?, senha_banco=?, schema=? WHERE id=?",
             (
-                dados.host,
-                dados.porta,
-                dados.usuario_banco,
-                dados.senha_banco,
-                dados.schema,
+                dados.get("host"),
+                dados.get("porta"),
+                dados.get("usuario_banco"),
+                dados.get("senha_banco"),
+                dados.get("schema"),
                 usuario_id
             )
         )
         conn.commit()
     return {"ok": True}
 
+@app.get("/tabelas_remotas")
+def tabelas_remotas(usuario_id: int):
+    # Busca as credenciais do usuário
+    with get_conn() as conn:
+        user = conn.execute("SELECT host, porta, usuario_banco, senha_banco, schema FROM usuarios WHERE id=?", (usuario_id,)).fetchone()
+        if not user or not all(user):
+            raise HTTPException(status_code=400, detail="Credenciais de banco não configuradas.")
+
+        host, porta, usuario_banco, senha_banco, schema = user
+
+    try:
+        db = mysql.connector.connect(
+            host=host,
+            port=int(porta),
+            user=usuario_banco,
+            password=senha_banco,
+            database=schema
+        )
+        cur = db.cursor()
+        cur.execute("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE' OR Table_type = 'VIEW'")
+        result = cur.fetchall()
+        tabelas = [row[0] for row in result]
+        cur.close()
+        db.close()
+        return tabelas
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao conectar ao banco remoto: {e}")
+
 @app.get("/tabelas", response_model=List[str])
 def listar_tabelas():
     with get_conn() as conn:
         tabelas = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         return [t[0] for t in tabelas if t[0] not in ['relacionamentos', 'usuarios', 'sqlite_sequence']]
+
+@app.get("/tabelas-remotas", response_model=List[str])
+def listar_tabelas_remotas():
+    # Substitua esse trecho pelo seu mecanismo real de busca de tabelas remotas
+    # Por enquanto, retorna uma lista de exemplo:
+    return ["VW_CTO_PRODUTO", "VW_CTO_ORDEM_PRODUCAO_ITEM", "VW_CTO_FINAN"]
 
 @app.get("/colunas/{tabela}", response_model=List[str])
 def listar_colunas(tabela: str):
@@ -182,3 +200,4 @@ def indicadores(setor: str = Query(...)):
         }
     else:
         return {}
+
