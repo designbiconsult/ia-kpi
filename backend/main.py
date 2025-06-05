@@ -6,7 +6,7 @@ from typing import List, Dict
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Em produção, restrinja!
+    allow_origins=["http://localhost:3000"],  # Em produção, restrinja!
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
