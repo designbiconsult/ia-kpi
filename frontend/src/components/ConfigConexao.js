@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from './Navbar';
-import { api } from '../api';
+import { api, buscarUsuario } from '../api';
 
 export default function ConfigConexao({ user, onLogout }) {
   const [form, setForm] = useState({
@@ -14,6 +14,23 @@ export default function ConfigConexao({ user, onLogout }) {
   });
   const [msg, setMsg] = useState("");
   const navigate = useNavigate();
+
+  // Busca dados salvos ao carregar componente
+  useEffect(() => {
+    if (user && user.id) {
+      buscarUsuario(user.id).then(dados => {
+        setForm({
+          ...form,
+          host: dados.host || "",
+          porta: dados.porta || "3306",
+          usuario_banco: dados.usuario_banco || "",
+          senha_banco: dados.senha_banco || "",
+          schema: dados.schema || "",
+        });
+      });
+    }
+    // eslint-disable-next-line
+  }, [user]);
 
   const handleChange = e => setForm({...form, [e.target.name]: e.target.value});
 
@@ -38,7 +55,7 @@ export default function ConfigConexao({ user, onLogout }) {
         <input name="usuario_banco" placeholder="Usuário" value={form.usuario_banco} onChange={handleChange} />
         <input name="senha_banco" type="password" placeholder="Senha" value={form.senha_banco} onChange={handleChange} />
         <input name="schema" placeholder="Schema" value={form.schema} onChange={handleChange} />
-        <input name="intervalo_sync" type="number" placeholder="Intervalo (min)" value={form.intervalo_sync} onChange={handleChange} />
+        <input name="intervalo_sync" placeholder="Intervalo (min)" value={form.intervalo_sync} onChange={handleChange} />
         <button type="submit">Salvar</button>
       </form>
       {msg && <div className="info">{msg}</div>}

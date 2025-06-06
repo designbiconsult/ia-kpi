@@ -59,6 +59,26 @@ def cadastrar_usuario(usuario: Dict):
         except sqlite3.IntegrityError:
             raise HTTPException(status_code=400, detail="Email já cadastrado")
 
+@app.get("/usuarios/{id}")
+def buscar_usuario(id: int):
+    with get_conn() as conn:
+        user = conn.execute(
+            "SELECT id, nome, email, host, porta, usuario_banco, senha_banco, schema FROM usuarios WHERE id=?",
+            (id,)
+        ).fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="Usuário não encontrado")
+        return {
+            "id": user[0],
+            "nome": user[1],
+            "email": user[2],
+            "host": user[3] or "",
+            "porta": user[4] or "3306",
+            "usuario_banco": user[5] or "",
+            "senha_banco": user[6] or "",
+            "schema": user[7] or ""
+        }
+
 @app.post("/login")
 def login(credentials: dict = Body(...)):
     with get_conn() as conn:
@@ -101,7 +121,6 @@ def atualizar_conexao(id: int, dados: dict):
 
 @app.get("/tabelas-remotas", response_model=List[str])
 def listar_tabelas_remotas(usuario_id: int = Query(...)):
-    # Busca os dados de conexão do usuário no SQLite
     with get_conn() as conn:
         user = conn.execute(
             "SELECT host, porta, usuario_banco, senha_banco, schema FROM usuarios WHERE id=?",
@@ -111,7 +130,6 @@ def listar_tabelas_remotas(usuario_id: int = Query(...)):
             raise HTTPException(status_code=404, detail="Usuário não encontrado")
         host, porta, usuario, senha, schema = user
 
-    # Conecta no banco MySQL remoto
     try:
         conn_mysql = mysql.connector.connect(
             host=host,
