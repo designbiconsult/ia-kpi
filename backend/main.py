@@ -1,13 +1,13 @@
 from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
-import mysql.connector
-from typing import List, Dict
+from typing import List, Dict, Optional
+import pymysql
 
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000"],  # Ajuste se for publicar
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -82,6 +82,26 @@ def login(credentials: dict = Body(...)):
         else:
             raise HTTPException(status_code=401, detail="Credenciais inválidas")
 
+@app.get("/usuarios/{id}")
+def get_usuario(id: int):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, nome, email, host, porta, usuario_banco, senha_banco, schema FROM usuarios WHERE id=?",
+            (id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Usuário não encontrado")
+        return {
+            "id": row[0],
+            "nome": row[1],
+            "email": row[2],
+            "host": row[3],
+            "porta": row[4],
+            "usuario_banco": row[5],
+            "senha_banco": row[6],
+            "schema": row[7]
+        }
+
 @app.put("/usuarios/{id}/conexao")
 def atualizar_conexao(id: int, dados: dict):
     with get_conn() as conn:
@@ -99,41 +119,10 @@ def atualizar_conexao(id: int, dados: dict):
         conn.commit()
     return {"ok": True}
 
-@app.get("/tabelas-remotas")
-def tabelas_remotas(usuario_id: int = Query(...)):
-    with get_conn() as conn:
-        c = conn.cursor()
-        c.execute("SELECT host, porta, usuario_banco, senha_banco, schema FROM usuarios WHERE id=?", (usuario_id,))
-        row = c.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Usuário não encontrado")
-        host, porta, usuario, senha, schema = row
-
-    try:
-        mysql_conn = mysql.connector.connect(
-            host=host,
-            port=int(porta) if porta else 3306,
-            user=usuario,
-            password=senha,
-            database=schema
-        )
-        cur = mysql_conn.cursor()
-        cur.execute("""
-            SELECT TABLE_NAME
-            FROM information_schema.tables
-            WHERE table_schema = %s
-        """, (schema,))
-        resultados = [r[0] for r in cur.fetchall()]
-        cur.close()
-        mysql_conn.close()
-        return resultados
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao conectar no banco remoto: {e}")
-
 @app.get("/tabelas", response_model=List[str])
 def listar_tabelas():
     with get_conn() as conn:
-        tabelas = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        tabelas = conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table','view')").fetchall()
         return [t[0] for t in tabelas if t[0] not in ['relacionamentos', 'usuarios', 'sqlite_sequence']]
 
 @app.get("/colunas/{tabela}", response_model=List[str])
@@ -175,8 +164,45 @@ def deletar_relacionamento(rel_id: int):
         conn.commit()
     return {"ok": True}
 
+# Endpoint para listar tabelas E views do banco remoto do cliente
+@app.get("/tabelas-remotas", response_model=List[str])
+def tabelas_remotas(usuario_id: int = Query(...)):
+    with get_conn() as conn:
+        user = conn.execute("SELECT host, porta, usuario_banco, senha_banco, schema FROM usuarios WHERE id=?", (usuario_id,)).fetchone()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    host, porta, usuario_banco, senha_banco, schema = user
+    if not all([host, porta, usuario_banco, senha_banco, schema]):
+        raise HTTPException(status_code=400, detail="Conexão não configurada")
+
+    try:
+        conn_mysql = pymysql.connect(
+            host=host,
+            port=int(porta),
+            user=usuario_banco,
+            password=senha_banco,
+            database=schema
+        )
+        with conn_mysql.cursor() as cur:
+            cur.execute("""
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema = %s
+            """, (schema,))
+            resultado_tabelas = [row[0] for row in cur.fetchall()]
+            cur.execute("""
+                SELECT table_name FROM information_schema.views
+                WHERE table_schema = %s
+            """, (schema,))
+            resultado_views = [row[0] for row in cur.fetchall()]
+        conn_mysql.close()
+        return resultado_tabelas + resultado_views
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao conectar MySQL: {str(e)}")
+
 @app.get("/indicadores")
 def indicadores(setor: str = Query(...)):
+    # Exemplo simples - ajuste para trazer dos dados do usuário se necessário
     if setor.lower() == "financeiro":
         return {
             "Receitas do mês": 100000,
