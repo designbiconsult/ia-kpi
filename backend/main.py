@@ -174,6 +174,8 @@ def tabelas_remotas(usuario_id: int = Query(...)):
     host, porta, usuario_banco, senha_banco, schema = user
     if not all([host, porta, usuario_banco, senha_banco, schema]):
         raise HTTPException(status_code=400, detail="Conexão não configurada")
+    print("usuário retornado:", user)
+    print("Tentando conectar no MySQL com:", host, porta, usuario_banco, senha_banco, schema)
 
     try:
         print(f"Conectando em {host}:{porta}, schema={schema}, user={usuario_banco}")
