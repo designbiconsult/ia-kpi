@@ -203,6 +203,13 @@ def tabelas_remotas(usuario_id: int = Query(...)):
     except Exception as e:
         print("Erro ao conectar MySQL:", str(e))
         raise HTTPException(status_code=500, detail=f"Erro ao conectar MySQL: {str(e)}")
+    
+@app.get("/debug-usuario/{usuario_id}")
+def debug_usuario(usuario_id: int):
+    with get_conn() as conn:
+        user = conn.execute("SELECT host, porta, usuario_banco, senha_banco, schema FROM usuarios WHERE id=?", (usuario_id,)).fetchone()
+        return {"user": user}
+
 
 @app.get("/indicadores")
 def indicadores(setor: str = Query(...)):
