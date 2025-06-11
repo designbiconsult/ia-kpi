@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from './Navbar';
-import { api } from '../api';
+import { api } from '..api';
 
 export default function SincronizarTabelas({ user, onLogout }) {
   const [tabelas, setTabelas] = useState([]);

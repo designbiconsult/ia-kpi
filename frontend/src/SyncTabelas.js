@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { listarTabelas, sincronizarTabelas } from './api';
+import { listarTabelas, sincronizarTabelas } from '.api';
 import { useNavigate } from 'react-router-dom';
 
 function SyncTabelas({ user }) {

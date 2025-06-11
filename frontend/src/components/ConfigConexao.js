@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from './Navbar';
-import { api, buscarUsuario } from '../api';
+import { api, buscarUsuario } from '..api';
 
 export default function ConfigConexao({ user, onLogout }) {
   const [form, setForm] = useState({
