@@ -10,6 +10,6 @@ export async function buscarUsuario(id) {
 }
 
 export async function buscarTabelasRemotas(usuario_id) {
-  const resp = await api.get(`/tabelas-remotas?usuario_id=1{usuario_id}`);
+  const resp = await api.get("/tabelas-remotas", { params: { usuario_id } });
   return resp.data;
 }
