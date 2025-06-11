@@ -171,18 +171,19 @@ def tabelas_remotas(usuario_id: int = Query(...)):
         user = conn.execute("SELECT host, porta, usuario_banco, senha_banco, schema FROM usuarios WHERE id=?", (usuario_id,)).fetchone()
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
-
     host, porta, usuario_banco, senha_banco, schema = user
     if not all([host, porta, usuario_banco, senha_banco, schema]):
         raise HTTPException(status_code=400, detail="Conexão não configurada")
 
     try:
+        print(f"Conectando em {host}:{porta}, schema={schema}, user={usuario_banco}")
         conn_mysql = pymysql.connect(
             host=host,
             port=int(porta),
             user=usuario_banco,
             password=senha_banco,
-            database=schema
+            database=schema,
+            charset='utf8mb4'
         )
         with conn_mysql.cursor() as cur:
             cur.execute("""
@@ -196,8 +197,11 @@ def tabelas_remotas(usuario_id: int = Query(...)):
             """, (schema,))
             resultado_views = [row[0] for row in cur.fetchall()]
         conn_mysql.close()
+        print("Tabelas encontradas:", resultado_tabelas)
+        print("Views encontradas:", resultado_views)
         return resultado_tabelas + resultado_views
     except Exception as e:
+        print("Erro ao conectar MySQL:", str(e))
         raise HTTPException(status_code=500, detail=f"Erro ao conectar MySQL: {str(e)}")
 
 @app.get("/indicadores")
