@@ -12,7 +12,7 @@ export default function SincronizarTabelas({ user, onLogout }) {
   useEffect(() => {
     async function fetchTabelas() {
       try {
-        const { data } = await api.get(`/tabelas-remotas`);
+        const { data } = await api.get(`/tabelas-remotas?usuario_id=${user.id}`);
         setTabelas(data);
       } catch {
         setMsg("Erro ao buscar tabelas remotas.");
