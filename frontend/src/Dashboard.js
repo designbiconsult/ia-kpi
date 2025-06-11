@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import SetorTabs from "./components/SetorTabs";
 import IndicadorCard from "./components/IndicadorCard";
-import { api } from ".api";
+import { api } from ".\api";
 
 const setores = ["Financeiro", "Comercial", "Produção"];
 
