@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { salvarConexao } from '.\api';
+import { salvarConexao } from './api';
 
 function ConfigConexao({ user }) {
   const [host, setHost] = useState('');
