@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import ReactFlow, { Controls, Background } from 'reactflow';
-import 'reactflow/dist/style.css';
+//import 'reactflow/dist/style.css';
 import { listarTabelas, listarColunas, listarRelacionamentos, criarRelacionamento, deletarRelacionamento } from '.api';
 
 function Diagram({ user }) {
