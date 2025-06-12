@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 from typing import List, Dict, Optional
 import pymysql
+import datetime
 
 app = FastAPI()
 app.add_middleware(
@@ -42,6 +43,15 @@ def init_db():
                 tabela_destino TEXT,
                 coluna_destino TEXT,
                 tipo_relacionamento TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tabelas_sincronizadas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id INTEGER,
+                nome_tabela TEXT,
+                ultima_sincronizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(usuario_id, nome_tabela)
             )
         """)
         conn.commit()
@@ -123,7 +133,7 @@ def atualizar_conexao(id: int, dados: dict):
 def listar_tabelas():
     with get_conn() as conn:
         tabelas = conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table','view')").fetchall()
-        return [t[0] for t in tabelas if t[0] not in ['relacionamentos', 'usuarios', 'sqlite_sequence']]
+        return [t[0] for t in tabelas if t[0] not in ['relacionamentos', 'usuarios', 'sqlite_sequence', 'tabelas_sincronizadas']]
 
 @app.get("/colunas/{tabela}", response_model=List[str])
 def listar_colunas(tabela: str):
@@ -164,9 +174,9 @@ def deletar_relacionamento(rel_id: int):
         conn.commit()
     return {"ok": True}
 
-# Endpoint para listar tabelas E views do banco remoto do cliente
-@app.get("/tabelas-remotas", response_model=List[str])
-def tabelas_remotas(usuario_id: int = Query(...)):
+# ====== NOVO BLOCO DE SINCRONISMO ======
+
+def get_user_mysql_config(usuario_id: int):
     with get_conn() as conn:
         user = conn.execute("SELECT host, porta, usuario_banco, senha_banco, schema FROM usuarios WHERE id=?", (usuario_id,)).fetchone()
     if not user:
@@ -174,18 +184,127 @@ def tabelas_remotas(usuario_id: int = Query(...)):
     host, porta, usuario_banco, senha_banco, schema = user
     if not all([host, porta, usuario_banco, senha_banco, schema]):
         raise HTTPException(status_code=400, detail="Conexão não configurada")
-    print("usuário retornado:", user)
-    print("Tentando conectar no MySQL com:", host, porta, usuario_banco, senha_banco, schema)
+    return host, int(porta), usuario_banco, senha_banco, schema
 
+@app.get("/sincronismo/tabelas")
+def listar_tabelas_sincronismo(usuario_id: int = Query(...)):
+    with get_conn() as conn:
+        res1 = conn.execute("SELECT nome_tabela FROM tabelas_sincronizadas WHERE usuario_id=?", (usuario_id,))
+        sincronizadas = [r[0] for r in res1.fetchall()]
+    host, porta, usuario_banco, senha_banco, schema = get_user_mysql_config(usuario_id)
     try:
-        print(f"Conectando em {host}:{porta}, schema={schema}, user={usuario_banco}")
         conn_mysql = pymysql.connect(
-            host=host,
-            port=int(porta),
-            user=usuario_banco,
-            password=senha_banco,
-            database=schema,
-            charset='utf8mb4'
+            host=host, port=porta, user=usuario_banco, password=senha_banco,
+            database=schema, charset='utf8mb4'
+        )
+        with conn_mysql.cursor() as cur:
+            cur.execute("""SELECT table_name FROM information_schema.tables WHERE table_schema = %s""", (schema,))
+            resultado_tabelas = [row[0] for row in cur.fetchall()]
+            cur.execute("""SELECT table_name FROM information_schema.views WHERE table_schema = %s""", (schema,))
+            resultado_views = [row[0] for row in cur.fetchall()]
+        conn_mysql.close()
+        novas_tabelas = [t for t in (resultado_tabelas + resultado_views) if t not in sincronizadas]
+        return {
+            "sincronizadas": sincronizadas,
+            "novas": novas_tabelas
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao conectar MySQL: {str(e)}")
+
+def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
+    # Copia estrutura e dados da tabela do MySQL para o SQLite
+    with mysql_conn.cursor() as cur:
+        cur.execute(f"SHOW CREATE TABLE `{tabela}`")
+        create_table_sql = cur.fetchone()[1]
+        # Adaptar para SQLite:
+        create_table_sql = (
+            create_table_sql.replace('`', '"')
+            .replace('ENGINE=InnoDB', '')
+            .replace('AUTO_INCREMENT', 'AUTOINCREMENT')
+            .replace('DEFAULT CHARSET=utf8mb4', '')
+        )
+        # Remove COLLATE e outras palavras não suportadas pelo SQLite
+        import re
+        create_table_sql = re.sub(r'COLLATE\s+\w+', '', create_table_sql)
+        create_table_sql = re.sub(r'CHARACTER SET\s+\w+', '', create_table_sql)
+        create_table_sql = re.sub(r'COMMENT\s+\'[^\']*\'', '', create_table_sql)
+        create_table_sql = create_table_sql.replace('unsigned', '')
+        create_table_sql = create_table_sql.replace('DEFAULT NULL', '')
+        create_table_sql = create_table_sql.replace('NOT NULL', '')
+
+        sqlite_conn.execute(f'DROP TABLE IF EXISTS "{tabela}"')
+        sqlite_conn.execute(create_table_sql)
+        sqlite_conn.commit()
+        # Copiar dados
+        cur.execute(f"SELECT * FROM `{tabela}`")
+        rows = cur.fetchall()
+        if rows:
+            col_names = [desc[0] for desc in cur.description]
+            placeholders = ','.join(['?' for _ in col_names])
+            sqlite_conn.executemany(
+                f'INSERT INTO "{tabela}" ({",".join(col_names)}) VALUES ({placeholders})',
+                rows
+            )
+            sqlite_conn.commit()
+
+@app.post("/sincronismo/sincronizar-novas")
+def sincronizar_novas(
+    usuario_id: int = Body(...),
+    tabelas: List[str] = Body(...)
+):
+    host, porta, usuario_banco, senha_banco, schema = get_user_mysql_config(usuario_id)
+    try:
+        conn_mysql = pymysql.connect(
+            host=host, port=porta, user=usuario_banco, password=senha_banco,
+            database=schema, charset='utf8mb4'
+        )
+        with get_conn() as sqlite_conn:
+            for tabela in tabelas:
+                copy_table_from_mysql_to_sqlite(conn_mysql, sqlite_conn, tabela)
+                sqlite_conn.execute("""
+                    INSERT OR IGNORE INTO tabelas_sincronizadas (usuario_id, nome_tabela)
+                    VALUES (?, ?)
+                """, (usuario_id, tabela))
+            sqlite_conn.commit()
+        conn_mysql.close()
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao sincronizar: {str(e)}")
+
+@app.post("/sincronismo/atualizar")
+def atualizar_sincronizadas(
+    usuario_id: int = Body(...),
+    tabelas: List[str] = Body(...)
+):
+    host, porta, usuario_banco, senha_banco, schema = get_user_mysql_config(usuario_id)
+    try:
+        conn_mysql = pymysql.connect(
+            host=host, port=porta, user=usuario_banco, password=senha_banco,
+            database=schema, charset='utf8mb4'
+        )
+        with get_conn() as sqlite_conn:
+            for tabela in tabelas:
+                copy_table_from_mysql_to_sqlite(conn_mysql, sqlite_conn, tabela)
+                sqlite_conn.execute("""
+                    UPDATE tabelas_sincronizadas
+                    SET ultima_sincronizacao = CURRENT_TIMESTAMP
+                    WHERE usuario_id=? AND nome_tabela=?
+                """, (usuario_id, tabela))
+            sqlite_conn.commit()
+        conn_mysql.close()
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao atualizar: {str(e)}")
+
+# ====== FIM DO BLOCO DE SINCRONISMO ======
+
+@app.get("/tabelas-remotas", response_model=List[str])
+def tabelas_remotas(usuario_id: int = Query(...)):
+    host, porta, usuario_banco, senha_banco, schema = get_user_mysql_config(usuario_id)
+    try:
+        conn_mysql = pymysql.connect(
+            host=host, port=porta, user=usuario_banco, password=senha_banco,
+            database=schema, charset='utf8mb4'
         )
         with conn_mysql.cursor() as cur:
             cur.execute("""
@@ -199,11 +318,8 @@ def tabelas_remotas(usuario_id: int = Query(...)):
             """, (schema,))
             resultado_views = [row[0] for row in cur.fetchall()]
         conn_mysql.close()
-        print("Tabelas encontradas:", resultado_tabelas)
-        print("Views encontradas:", resultado_views)
         return resultado_tabelas + resultado_views
     except Exception as e:
-        print("Erro ao conectar MySQL:", str(e))
         raise HTTPException(status_code=500, detail=f"Erro ao conectar MySQL: {str(e)}")
     
 @app.get("/debug-usuario/{usuario_id}")
@@ -211,7 +327,6 @@ def debug_usuario(usuario_id: int):
     with get_conn() as conn:
         user = conn.execute("SELECT host, porta, usuario_banco, senha_banco, schema FROM usuarios WHERE id=?", (usuario_id,)).fetchone()
         return {"user": user}
-
 
 @app.get("/indicadores")
 def indicadores(setor: str = Query(...)):
