@@ -8,13 +8,7 @@ export default function CadastroEmpresa() {
     nome_empresa: "",
     nome_usuario: "",
     email: "",
-    senha: "",
-    tipo_banco: "",
-    host: "",
-    porta: "",
-    usuario_banco: "",
-    senha_banco: "",
-    schema: ""
+    senha: ""
   });
   const [msg, setMsg] = useState("");
   const [ok, setOk] = useState(false);
@@ -53,12 +47,6 @@ export default function CadastroEmpresa() {
               <TextField label="Nome do Usuário Admin" name="nome_usuario" value={form.nome_usuario} onChange={handleChange} required />
               <TextField label="E-mail do Usuário" type="email" name="email" value={form.email} onChange={handleChange} required />
               <TextField label="Senha do Usuário" type="password" name="senha" value={form.senha} onChange={handleChange} required />
-              <TextField label="Tipo de Banco (mysql/postgres...)" name="tipo_banco" value={form.tipo_banco} onChange={handleChange} required />
-              <TextField label="Host" name="host" value={form.host} onChange={handleChange} required />
-              <TextField label="Porta" name="porta" value={form.porta} onChange={handleChange} required />
-              <TextField label="Usuário do Banco" name="usuario_banco" value={form.usuario_banco} onChange={handleChange} required />
-              <TextField label="Senha do Banco" name="senha_banco" value={form.senha_banco} onChange={handleChange} required />
-              <TextField label="Schema/Banco" name="schema" value={form.schema} onChange={handleChange} required />
               {msg && <Alert severity="error">{msg}</Alert>}
               {ok && <Alert severity="success">Cadastro realizado! Redirecionando para login...</Alert>}
               <Button variant="contained" color="primary" type="submit" sx={{ fontWeight: 700, background: "#0B2132", '&:hover': { background: "#06597a" } }} fullWidth>
