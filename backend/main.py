@@ -74,8 +74,6 @@ def login(data: Dict = Body(...)):
 
 @app.post("/empresas")
 def cadastrar_empresa(dados: Dict = Body(...)):
-    if user["perfil"] != "admin_geral":
-        raise HTTPException(status_code=403, detail="Acesso restrito (admin geral)")
     with get_conn() as conn:
         conn.execute("""
             INSERT INTO empresas (nome, tipo_banco, host, porta, usuario_banco, senha_banco, schema)
@@ -86,6 +84,7 @@ def cadastrar_empresa(dados: Dict = Body(...)):
         ))
         conn.commit()
     return {"ok": True}
+
 
 @app.put("/empresas/{empresa_id}")
 def atualizar_empresa(
