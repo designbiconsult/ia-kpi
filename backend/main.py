@@ -213,28 +213,51 @@ def listar_tabelas_sincronismo(usuario_id: int = Query(...)):
 
 def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
     # Copia estrutura e dados da tabela do MySQL para o SQLite
+    import re
+
     with mysql_conn.cursor() as cur:
         cur.execute(f"SHOW CREATE TABLE `{tabela}`")
         create_table_sql = cur.fetchone()[1]
-        # Adaptar para SQLite:
-        create_table_sql = (
-            create_table_sql.replace('`', '"')
-            .replace('ENGINE=InnoDB', '')
-            .replace('AUTO_INCREMENT', 'AUTOINCREMENT')
-            .replace('DEFAULT CHARSET=utf8mb4', '')
-        )
-        # Remove COLLATE e outras palavras não suportadas pelo SQLite
-        import re
-        create_table_sql = re.sub(r'COLLATE\s+\w+', '', create_table_sql)
-        create_table_sql = re.sub(r'CHARACTER SET\s+\w+', '', create_table_sql)
-        create_table_sql = re.sub(r'COMMENT\s+\'[^\']*\'', '', create_table_sql)
-        create_table_sql = create_table_sql.replace('unsigned', '')
-        create_table_sql = create_table_sql.replace('DEFAULT NULL', '')
-        create_table_sql = create_table_sql.replace('NOT NULL', '')
 
+        # Adaptar para SQLite:
+        # 1. Substituir ` por " (mas só em nomes de tabela e coluna, não no CREATE TABLE ... AS)
+        create_table_sql = create_table_sql.replace('`', '"')
+
+        # 2. Remove linhas que mencionam ENGINE, CHARSET, COLLATE, KEY, CONSTRAINT, AUTO_INCREMENT, etc
+        lines = create_table_sql.splitlines()
+        new_lines = []
+        for line in lines:
+            if any(word in line.upper() for word in ["ENGINE", "CHARSET", "COLLATE", "KEY ", "CONSTRAINT", "AUTO_INCREMENT", "COMMENT", "ZEROFILL"]):
+                continue
+            # Remove NOT NULL e DEFAULT NULL (SQLite permite nulo por padrão)
+            line = line.replace("NOT NULL", "")
+            line = line.replace("DEFAULT NULL", "")
+            # Remove unsigned
+            line = line.replace("unsigned", "")
+            new_lines.append(line)
+        create_table_sql = "\n".join(new_lines)
+
+        # 3. Remover vírgulas duplas, parênteses extras e espaços
+        create_table_sql = re.sub(r',\s*\)', '\n)', create_table_sql)
+        create_table_sql = re.sub(r'\s+', ' ', create_table_sql)
+
+        # 4. Garante que termina apenas com ");"
+        if not create_table_sql.strip().endswith(");"):
+            create_table_sql = create_table_sql.strip()
+            if create_table_sql.endswith(")"):
+                create_table_sql += ";"
+            else:
+                create_table_sql += ");"
+
+        # Executa no SQLite
         sqlite_conn.execute(f'DROP TABLE IF EXISTS "{tabela}"')
-        sqlite_conn.execute(create_table_sql)
+        try:
+            sqlite_conn.execute(create_table_sql)
+        except Exception as e:
+            print("CREATE TABLE final:", create_table_sql)
+            raise e
         sqlite_conn.commit()
+
         # Copiar dados
         cur.execute(f"SELECT * FROM `{tabela}`")
         rows = cur.fetchall()
@@ -246,6 +269,7 @@ def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
                 rows
             )
             sqlite_conn.commit()
+
 
 @app.post("/sincronismo/sincronizar-novas")
 def sincronizar_novas(
