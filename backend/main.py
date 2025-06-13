@@ -192,7 +192,7 @@ def dados_empresa(
 @app.put("/empresas/{empresa_id}/conexao")
 def atualizar_conexao(
     empresa_id: int = Path(...),
-    body: ConexaoInput = Body(...),
+    conexao: ConexaoInput = Body(...),
     user: dict = Depends(get_current_user)
 ):
     if user["perfil"] != "admin_geral" and user["empresa_id"] != empresa_id:
