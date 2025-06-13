@@ -269,7 +269,9 @@ def sincronizar_novas(
         conn_mysql.close()
         return {"ok": True}
     except Exception as e:
+        print("Erro detalhado ao sincronizar:", str(e))
         raise HTTPException(status_code=500, detail=f"Erro ao sincronizar: {str(e)}")
+
 
 @app.post("/sincronismo/atualizar")
 def atualizar_sincronizadas(
