@@ -100,7 +100,7 @@ export default function Login({ onLogin }) {
               </Button>
               <Button
                 variant="text"
-                color="primary"
+                color="secondary"
                 onClick={gotoCadastro}
                 fullWidth
                 sx={{ mt: 0.5 }}
