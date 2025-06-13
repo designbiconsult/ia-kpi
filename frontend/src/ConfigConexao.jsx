@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Box, Card, CardContent, Typography, TextField, Button, Alert, Stack } from "@mui/material";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
 
 export default function ConfigConexao({ user }) {
   const [form, setForm] = useState({
@@ -13,14 +14,19 @@ export default function ConfigConexao({ user }) {
   });
   const [msg, setMsg] = useState("");
   const [ok, setOk] = useState(false);
+  const [carregando, setCarregando] = useState(true);
+  const navigate = useNavigate();
 
+  // Busca os dados atuais da empresa ao carregar
   useEffect(() => {
-    // Buscar dados da empresa (você pode passar empresa_id via props/context)
     async function fetchConexao() {
       try {
+        // Precisa autenticar enviando email/senha do user no body (como no backend)
         const { data } = await axios.get(
           `http://localhost:8000/empresas/${user.empresa_id}`,
-          { data: { email: user.email, senha: user.senha } }
+          {
+            data: { email: user.email, senha: user.senha }
+          }
         );
         setForm({
           tipo_banco: data.tipo_banco || "",
@@ -30,11 +36,14 @@ export default function ConfigConexao({ user }) {
           senha_banco: data.senha_banco || "",
           schema: data.schema || ""
         });
-      } catch {
-        // Se ainda não existir conexão, deixa tudo vazio
+      } catch (err) {
+        setMsg("Não foi possível carregar a conexão.");
+      } finally {
+        setCarregando(false);
       }
     }
     if (user?.empresa_id) fetchConexao();
+    // eslint-disable-next-line
   }, [user]);
 
   const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
@@ -44,14 +53,24 @@ export default function ConfigConexao({ user }) {
     setMsg(""); setOk(false);
     try {
       await axios.put(
-        `http://localhost:8000/empresas/${user.empresa_id}`,
+        `http://localhost:8000/empresas/${user.empresa_id}/conexao`,
         { ...form, email: user.email, senha: user.senha }
       );
       setOk(true);
+      setMsg("");
     } catch (err) {
       setMsg(err.response?.data?.detail || "Erro ao salvar conexão.");
+      setOk(false);
     }
   };
+
+  if (carregando) {
+    return (
+      <Box minHeight="100vh" display="flex" alignItems="center" justifyContent="center">
+        <Typography>Carregando dados da conexão...</Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box minHeight="100vh" display="flex" alignItems="center" justifyContent="center" sx={{ background: 'linear-gradient(120deg, #f8fafd 60%, #e4f3fa 100%)' }}>
@@ -60,6 +79,9 @@ export default function ConfigConexao({ user }) {
           <Stack spacing={2} alignItems="center" mb={2}>
             <Typography variant="h5" fontWeight={700} color="#0B2132">
               Configuração de Conexão
+            </Typography>
+            <Typography color="text.secondary" fontSize={15}>
+              Defina ou edite as informações de acesso ao banco de dados da empresa.
             </Typography>
           </Stack>
           <form onSubmit={handleSubmit} autoComplete="off">
@@ -74,6 +96,9 @@ export default function ConfigConexao({ user }) {
               {ok && <Alert severity="success">Conexão salva com sucesso!</Alert>}
               <Button variant="contained" color="primary" type="submit" sx={{ fontWeight: 700, background: "#0B2132", '&:hover': { background: "#06597a" } }} fullWidth>
                 Salvar Conexão
+              </Button>
+              <Button onClick={() => navigate("/dashboard")} variant="text" color="secondary" fullWidth>
+                Voltar ao Dashboard
               </Button>
             </Stack>
           </form>
