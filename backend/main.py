@@ -233,12 +233,11 @@ def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
             new_lines.append(line)
         create_table_sql = "\n".join(new_lines)
 
-        # --------- AJUSTE CRÍTICO AQUI (anti-vírgula final) --------------
-        # Remove vírgula(s) antes do fechamento do parêntese final
-        create_table_sql = re.sub(r',\s*\)', ')', create_table_sql)
-        # Repete duas vezes só para garantir (caso ocorra mais de uma ocorrência)
-        create_table_sql = re.sub(r',\s*\)', ')', create_table_sql)
-        # Remove espaços duplicados
+        # --------- AJUSTE CRÍTICO (anti-vírgula final robusto) --------------
+        # Remove vírgula(s) antes do fechamento do parêntese final, em qualquer cenário
+        create_table_sql = re.sub(r',\s*\)', ')', create_table_sql, flags=re.DOTALL)
+        create_table_sql = re.sub(r',\s*\);', ');', create_table_sql, flags=re.DOTALL)
+        # Remove múltiplos espaços em branco
         create_table_sql = re.sub(r'\s+', ' ', create_table_sql)
         create_table_sql = create_table_sql.strip()
         if not create_table_sql.endswith(");"):
@@ -246,7 +245,6 @@ def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
                 create_table_sql += ";"
             else:
                 create_table_sql += ");"
-        # DEBUG: mostra o SQL final sempre
         print("CREATE TABLE final:", create_table_sql)
 
         # Executa no SQLite
