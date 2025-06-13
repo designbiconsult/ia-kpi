@@ -9,7 +9,7 @@ import re
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Ajuste se for publicar
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -175,7 +175,7 @@ def deletar_relacionamento(rel_id: int):
         conn.commit()
     return {"ok": True}
 
-# ====== NOVO BLOCO DE SINCRONISMO ======
+# ====== BLOCO DE SINCRONISMO ======
 
 def get_user_mysql_config(usuario_id: int):
     with get_conn() as conn:
@@ -218,11 +218,10 @@ def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
         cur.execute(f"SHOW CREATE TABLE `{tabela}`")
         create_table_sql = cur.fetchone()[1]
 
-        # Adaptar para SQLite:
-        # 1. Substituir ` por "
+        # 1. Troca ` por "
         create_table_sql = create_table_sql.replace('`', '"')
 
-        # 2. Remove linhas/fragmentos não suportados pelo SQLite
+        # 2. Remove linhas e palavras não suportadas pelo SQLite
         lines = create_table_sql.splitlines()
         new_lines = []
         for line in lines:
@@ -234,18 +233,18 @@ def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
             new_lines.append(line)
         create_table_sql = "\n".join(new_lines)
 
-        # Remove vírgula final antes do parêntese (ajuste crítico)
+        # --------- AJUSTE CRÍTICO AQUI --------------
+        # Remove vírgula(s) antes do fechamento do parêntese final
         create_table_sql = re.sub(r',\s*\)', ')', create_table_sql)
         # Remove espaços duplicados
         create_table_sql = re.sub(r'\s+', ' ', create_table_sql)
-
-        # Garante finalização correta
-        if not create_table_sql.strip().endswith(");"):
-            create_table_sql = create_table_sql.strip()
+        create_table_sql = create_table_sql.strip()
+        if not create_table_sql.endswith(");"):
             if create_table_sql.endswith(")"):
                 create_table_sql += ";"
             else:
                 create_table_sql += ");"
+        # --------------------------------------------
 
         # Executa no SQLite
         sqlite_conn.execute(f'DROP TABLE IF EXISTS "{tabela}"')
@@ -353,7 +352,6 @@ def debug_usuario(usuario_id: int):
 
 @app.get("/indicadores")
 def indicadores(setor: str = Query(...)):
-    # Exemplo simples - ajuste para trazer dos dados do usuário se necessário
     if setor.lower() == "financeiro":
         return {
             "Receitas do mês": 100000,
