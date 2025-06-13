@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { Box, Card, CardContent, Typography, TextField, Button, Alert, Stack, MenuItem } from "@mui/material";
+import {
+  Box, Card, CardContent, Typography, TextField, Button,
+  Alert, Stack, MenuItem
+} from "@mui/material";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
@@ -17,7 +20,6 @@ export default function ConfigConexao({ user }) {
   const [carregando, setCarregando] = useState(true);
   const navigate = useNavigate();
 
-  // Busca os dados atuais da empresa ao carregar
   useEffect(() => {
     async function fetchConexao() {
       try {
@@ -58,7 +60,15 @@ export default function ConfigConexao({ user }) {
       setOk(true);
       setMsg("");
     } catch (err) {
-      setMsg(err.response?.data?.detail || "Erro ao salvar conexão.");
+      let erroApi = err.response?.data?.detail || err.response?.data || "Erro ao salvar conexão.";
+      if (Array.isArray(erroApi)) {
+        erroApi = erroApi.map(e =>
+          e.msg ? `${e.loc?.join(".") || ""}: ${e.msg}` : JSON.stringify(e)
+        ).join(" | ");
+      } else if (typeof erroApi === "object") {
+        erroApi = JSON.stringify(erroApi);
+      }
+      setMsg(erroApi);
       setOk(false);
     }
   };
