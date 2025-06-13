@@ -4,8 +4,13 @@ import {
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 
-export default function Dashboard({ user }) {
+export default function Dashboard({ user, onLogout }) {
   const navigate = useNavigate();
+
+  const handleLogout = () => {
+    onLogout && onLogout();    // Limpa user no App.jsx e localStorage
+    navigate("/login");        // Volta para login
+  };
 
   // Exemplos de indicadores (pode vir da API futuramente)
   const indicadores = [
@@ -42,7 +47,7 @@ export default function Dashboard({ user }) {
         <Button
           variant="outlined"
           color="secondary"
-          onClick={() => { localStorage.clear(); navigate("/"); }}
+          onClick={handleLogout}
         >Sair</Button>
       </Stack>
 
@@ -94,7 +99,7 @@ export default function Dashboard({ user }) {
           color="success"
           size="large"
           sx={{ fontWeight: 700, background: "#2284a1", '&:hover': { background: "#0B2132" } }}
-          onClick={() => navigate("/config-conexao")}
+          onClick={() => navigate("/conexao")}
         >
           Configurar Conexão
         </Button>
