@@ -90,7 +90,7 @@ export default function Dashboard({ user, onLogout }) {
           color="primary"
           size="large"
           sx={{ fontWeight: 700, background: "#0B2132", '&:hover': { background: "#06597a" } }}
-          onClick={() => navigate("/sincronismo")}
+          onClick={() => navigate("/sincronizar")}
         >
           Sincronizar Tabelas
         </Button>
