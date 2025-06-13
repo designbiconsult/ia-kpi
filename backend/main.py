@@ -73,7 +73,7 @@ def login(data: Dict = Body(...)):
     return user
 
 @app.post("/empresas")
-def cadastrar_empresa(dados: Dict = Body(...), user: dict = Depends(get_current_user)):
+def cadastrar_empresa(dados: Dict = Body(...)):
     if user["perfil"] != "admin_geral":
         raise HTTPException(status_code=403, detail="Acesso restrito (admin geral)")
     with get_conn() as conn:
