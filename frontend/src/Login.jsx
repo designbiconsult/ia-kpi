@@ -1,34 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import axios from "axios";
 import {
   Box, Card, CardContent, Typography, TextField, Button, Alert, Stack, Avatar
-} from '@mui/material';
-import { useNavigate } from "react-router-dom";
-import { api } from './api';
+} from "@mui/material";
 
 export default function Login({ onLogin }) {
-  const [email, setEmail] = useState('');
-  const [senha, setSenha] = useState('');
-  const [erro, setErro] = useState('');
+  const [form, setForm] = useState({ email: "", senha: "" });
+  const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setErro('');
-    setLoading(true);
+  const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
 
+  const handleSubmit = async e => {
+    e.preventDefault();
+    setMsg("");
+    setLoading(true);
     try {
-      const { data } = await api.post("/login", { email, senha });
-      onLogin && onLogin(data);
+      const { data } = await axios.post("http://localhost:8000/login", form);
+      onLogin(data); // O objeto data é o usuário logado
       navigate("/dashboard");
-    } catch {
-      setErro('E-mail ou senha inválidos!');
+    } catch (err) {
+      setMsg("Credenciais inválidas.");
     } finally {
       setLoading(false);
     }
   };
-
-  const gotoCadastro = () => navigate("/cadastro");
 
   return (
     <Box
@@ -53,35 +51,35 @@ export default function Login({ onLogin }) {
               <span role="img" aria-label="Logo">🔑</span>
             </Avatar>
             <Typography variant="h5" fontWeight={700} color="#0B2132">
-              Bem-vindo ao IA-KPI
+              IA-KPI Login
             </Typography>
             <Typography color="text.secondary" fontSize={16}>
-              Faça login para acessar o sistema
+              Acesse sua conta
             </Typography>
           </Stack>
-
-          <form onSubmit={handleLogin} autoComplete="off">
+          <form onSubmit={handleSubmit} autoComplete="off">
             <Stack spacing={2}>
               <TextField
                 label="E-mail"
+                name="email"
                 variant="outlined"
                 type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
+                value={form.email}
+                onChange={handleChange}
                 fullWidth
                 required
-                autoFocus
               />
               <TextField
                 label="Senha"
+                name="senha"
                 variant="outlined"
                 type="password"
-                value={senha}
-                onChange={e => setSenha(e.target.value)}
+                value={form.senha}
+                onChange={handleChange}
                 fullWidth
                 required
               />
-              {erro && <Alert severity="error">{erro}</Alert>}
+              {msg && <Alert severity="error">{msg}</Alert>}
               <Button
                 variant="contained"
                 color="primary"
@@ -99,13 +97,11 @@ export default function Login({ onLogin }) {
                 {loading ? 'Entrando...' : 'Entrar'}
               </Button>
               <Button
-                variant="text"
-                color="primary"
-                onClick={gotoCadastro}
+                color="secondary"
+                onClick={() => navigate("/cadastro_empresa")}
                 fullWidth
-                sx={{ mt: 0.5 }}
               >
-                Não tem cadastro? Cadastre-se
+                Cadastrar Empresa
               </Button>
             </Stack>
           </form>

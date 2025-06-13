@@ -1,28 +1,31 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import axios from "axios";
 import {
   Box, Card, CardContent, Typography, TextField, Button, Alert, Stack, Avatar
-} from '@mui/material';
+} from "@mui/material";
 
 export default function Login({ onLogin }) {
-  const [email, setEmail] = useState('');
-  const [senha, setSenha] = useState('');
-  const [erro, setErro] = useState('');
+  const [form, setForm] = useState({ email: "", senha: "" });
+  const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
-  const handleLogin = (e) => {
+  const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
+
+  const handleSubmit = async e => {
     e.preventDefault();
-    setErro('');
+    setMsg("");
     setLoading(true);
-
-    // Troque pelo seu axios/post
-    setTimeout(() => {
+    try {
+      const { data } = await axios.post("http://localhost:8000/login", form);
+      onLogin(data); // O objeto data é o usuário logado
+      navigate("/dashboard");
+    } catch (err) {
+      setMsg("Credenciais inválidas.");
+    } finally {
       setLoading(false);
-      if (email === "admin@teste.com" && senha === "123") {
-        onLogin && onLogin({ email });
-      } else {
-        setErro('E-mail ou senha inválidos!');
-      }
-    }, 1000);
+    }
   };
 
   return (
@@ -45,38 +48,38 @@ export default function Login({ onLogin }) {
         <CardContent>
           <Stack spacing={2} alignItems="center" mb={2}>
             <Avatar sx={{ width: 56, height: 56, bgcolor: '#0B2132', fontSize: 32 }}>
-              {/* Pode pôr a logo da empresa aqui */}
               <span role="img" aria-label="Logo">🔑</span>
             </Avatar>
             <Typography variant="h5" fontWeight={700} color="#0B2132">
-              Bem-vindo ao IA-KPI
+              IA-KPI Login
             </Typography>
             <Typography color="text.secondary" fontSize={16}>
-              Faça login para acessar o sistema
+              Acesse sua conta
             </Typography>
           </Stack>
-
-          <form onSubmit={handleLogin} autoComplete="off">
+          <form onSubmit={handleSubmit} autoComplete="off">
             <Stack spacing={2}>
               <TextField
                 label="E-mail"
+                name="email"
                 variant="outlined"
                 type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
+                value={form.email}
+                onChange={handleChange}
                 fullWidth
                 required
               />
               <TextField
                 label="Senha"
+                name="senha"
                 variant="outlined"
                 type="password"
-                value={senha}
-                onChange={e => setSenha(e.target.value)}
+                value={form.senha}
+                onChange={handleChange}
                 fullWidth
                 required
               />
-              {erro && <Alert severity="error">{erro}</Alert>}
+              {msg && <Alert severity="error">{msg}</Alert>}
               <Button
                 variant="contained"
                 color="primary"
@@ -92,6 +95,13 @@ export default function Login({ onLogin }) {
                 fullWidth
               >
                 {loading ? 'Entrando...' : 'Entrar'}
+              </Button>
+              <Button
+                color="secondary"
+                onClick={() => navigate("/cadastro_empresa")}
+                fullWidth
+              >
+                Cadastrar Empresa
               </Button>
             </Stack>
           </form>

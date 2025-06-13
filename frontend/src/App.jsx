@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./Login";
-import Cadastro from "./Cadastro";
+import CadastroEmpresa from "./CadastroEmpresa";
 import Dashboard from "./Dashboard";
-import ConfigConexao from "./components/ConfigConexao";
-import SincronizarTabelas from "./components/SincronizarTabelas";
+import AdminDashboard from "./AdminDashboard"; // (exemplo, crie esse componente)
+import axios from "axios";
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -25,23 +25,55 @@ export default function App() {
     localStorage.removeItem("user");
   };
 
+  // Protege rotas privadas
+  const PrivateRoute = ({ children }) => (
+    user ? children : <Navigate to="/login" />
+  );
+
+  // Protege rotas só para admin_geral
+  const AdminRoute = ({ children }) =>
+    user && user.perfil === "admin_geral" ? children : <Navigate to="/dashboard" />;
+
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={!user ? <Navigate to="/login" /> : <Navigate to="/dashboard" />} />
-        <Route path="/login" element={<Login onLogin={handleLogin} />} />
-        <Route path="/cadastro" element={<Cadastro />} />
+        <Route
+          path="/"
+          element={user ? <Navigate to="/dashboard" /> : <Navigate to="/login" />}
+        />
+        <Route
+          path="/login"
+          element={<Login onLogin={handleLogin} />}
+        />
+        <Route
+          path="/cadastro_empresa"
+          element={<CadastroEmpresa />}
+        />
+
+        {/* Rota para dashboard (visível para qualquer usuário autenticado) */}
         <Route
           path="/dashboard"
-          element={user ? <Dashboard user={user} onLogout={handleLogout} /> : <Navigate to="/login" />}
+          element={
+            <PrivateRoute>
+              <Dashboard user={user} onLogout={handleLogout} />
+            </PrivateRoute>
+          }
         />
+
+        {/* Rota para admin dashboard (apenas para admin_geral) */}
         <Route
-          path="/conexao"
-          element={user ? <ConfigConexao user={user} onLogout={handleLogout} /> : <Navigate to="/login" />}
+          path="/admin"
+          element={
+            <AdminRoute>
+              <AdminDashboard user={user} onLogout={handleLogout} />
+            </AdminRoute>
+          }
         />
+
+        {/* Se acessar qualquer rota desconhecida, redireciona para dashboard ou login */}
         <Route
-          path="/sincronizar"
-          element={user ? <SincronizarTabelas user={user} onLogout={handleLogout} /> : <Navigate to="/login" />}
+          path="*"
+          element={user ? <Navigate to="/dashboard" /> : <Navigate to="/login" />}
         />
       </Routes>
     </BrowserRouter>
