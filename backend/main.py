@@ -77,14 +77,11 @@ def login(data: Dict = Body(...)):
 def cadastrar_empresa_com_usuario(dados: Dict = Body(...)):
     with get_conn() as conn:
         cur = conn.cursor()
-        # Cria empresa
+        # Cria empresa (só nome, conexão será configurada depois)
         cur.execute("""
-            INSERT INTO empresas (nome, tipo_banco, host, porta, usuario_banco, senha_banco, schema)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            dados["nome_empresa"], dados.get("tipo_banco"), dados.get("host"), dados.get("porta"),
-            dados.get("usuario_banco"), dados.get("senha_banco"), dados.get("schema")
-        ))
+            INSERT INTO empresas (nome)
+            VALUES (?)
+        """, (dados["nome_empresa"],))
         empresa_id = cur.lastrowid
         # Cria usuário admin_cliente dessa empresa
         try:
@@ -99,7 +96,7 @@ def cadastrar_empresa_com_usuario(dados: Dict = Body(...)):
         conn.commit()
     return {"ok": True, "empresa_id": empresa_id}
 
-# ----- Listar empresas (apenas admin_geral) -----
+# Listar empresas (apenas admin_geral)
 @app.get("/empresas")
 def listar_empresas(user: dict = Depends(get_current_user)):
     if user["perfil"] != "admin_geral":
@@ -113,19 +110,33 @@ def listar_empresas(user: dict = Depends(get_current_user)):
             ) for r in rows
         ]
 
-# ----- Atualizar empresa (apenas admin_geral) -----
-@app.put("/empresas/{empresa_id}")
-def atualizar_empresa(
+# Buscar dados de uma empresa específica
+@app.get("/empresas/{empresa_id}")
+def get_empresa(empresa_id: int, user: dict = Depends(get_current_user)):
+    # admin_geral pode tudo, admin_cliente só da própria empresa
+    if user["perfil"] != "admin_geral" and user["empresa_id"] != empresa_id:
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+    with get_conn() as conn:
+        row = conn.execute("SELECT id, nome, tipo_banco, host, porta, usuario_banco, senha_banco, schema FROM empresas WHERE id=?", (empresa_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Empresa não encontrada")
+        return dict(
+            id=row[0], nome=row[1], tipo_banco=row[2], host=row[3],
+            porta=row[4], usuario_banco=row[5], senha_banco=row[6], schema=row[7]
+        )
+
+# Atualizar conexão (apenas admin_geral ou admin_cliente da empresa)
+@app.put("/empresas/{empresa_id}/conexao")
+def atualizar_conexao(
     empresa_id: int = Path(...),
     dados: Dict = Body(...),
     user: dict = Depends(get_current_user)
 ):
-    if user["perfil"] != "admin_geral":
-        raise HTTPException(status_code=403, detail="Acesso restrito (admin geral)")
+    if user["perfil"] != "admin_geral" and user["empresa_id"] != empresa_id:
+        raise HTTPException(status_code=403, detail="Acesso negado.")
     with get_conn() as conn:
         conn.execute("""
             UPDATE empresas SET
-                nome = ?,
                 tipo_banco = ?,
                 host = ?,
                 porta = ?,
@@ -134,14 +145,14 @@ def atualizar_empresa(
                 schema = ?
             WHERE id = ?
         """, (
-            dados["nome"], dados.get("tipo_banco"), dados.get("host"), dados.get("porta"),
+            dados.get("tipo_banco"), dados.get("host"), dados.get("porta"),
             dados.get("usuario_banco"), dados.get("senha_banco"), dados.get("schema"),
             empresa_id
         ))
         conn.commit()
     return {"ok": True}
 
-# ----- Cadastro de usuário (apenas autenticado admin_geral ou admin_cliente) -----
+# Cadastro de usuário (apenas autenticado admin_geral ou admin_cliente)
 @app.post("/usuarios")
 def cadastrar_usuario(dados: Dict = Body(...), user: dict = Depends(get_current_user)):
     if user["perfil"] not in ["admin_geral", "admin_cliente"]:
@@ -162,7 +173,7 @@ def cadastrar_usuario(dados: Dict = Body(...), user: dict = Depends(get_current_
             raise HTTPException(status_code=400, detail="Email já cadastrado")
     return {"ok": True}
 
-# ----- Listar usuários (admin_geral vê todos, admin_cliente só da própria empresa) -----
+# Listar usuários (admin_geral vê todos, admin_cliente só da própria empresa)
 @app.get("/usuarios")
 def listar_usuarios(user: dict = Depends(get_current_user)):
     with get_conn() as conn:
@@ -172,7 +183,7 @@ def listar_usuarios(user: dict = Depends(get_current_user)):
             rows = conn.execute("SELECT id, nome, email, empresa_id, perfil, ativo FROM usuarios WHERE empresa_id=?", (user["empresa_id"],)).fetchall()
         return [dict(id=r[0], nome=r[1], email=r[2], empresa_id=r[3], perfil=r[4], ativo=r[5]) for r in rows]
 
-# ----- Dashboard administrativo básico -----
+# Dashboard administrativo básico
 @app.get("/admin/dashboard")
 def dashboard_admin(user: dict = Depends(get_current_user)):
     if user["perfil"] != "admin_geral":

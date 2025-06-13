@@ -3,13 +3,12 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./Login";
 import CadastroEmpresa from "./CadastroEmpresa";
 import Dashboard from "./Dashboard";
-import AdminDashboard from "./AdminDashboard"; // (exemplo, crie esse componente)
-import axios from "axios";
+import AdminDashboard from "./AdminDashboard";
+import ConfigConexao from "./ConfigConexao";
 
 export default function App() {
   const [user, setUser] = useState(null);
 
-  // Mantém login após refresh
   useEffect(() => {
     const stored = localStorage.getItem("user");
     if (stored) setUser(JSON.parse(stored));
@@ -25,12 +24,10 @@ export default function App() {
     localStorage.removeItem("user");
   };
 
-  // Protege rotas privadas
   const PrivateRoute = ({ children }) => (
     user ? children : <Navigate to="/login" />
   );
 
-  // Protege rotas só para admin_geral
   const AdminRoute = ({ children }) =>
     user && user.perfil === "admin_geral" ? children : <Navigate to="/dashboard" />;
 
@@ -49,8 +46,6 @@ export default function App() {
           path="/cadastro_empresa"
           element={<CadastroEmpresa />}
         />
-
-        {/* Rota para dashboard (visível para qualquer usuário autenticado) */}
         <Route
           path="/dashboard"
           element={
@@ -59,8 +54,6 @@ export default function App() {
             </PrivateRoute>
           }
         />
-
-        {/* Rota para admin dashboard (apenas para admin_geral) */}
         <Route
           path="/admin"
           element={
@@ -69,8 +62,14 @@ export default function App() {
             </AdminRoute>
           }
         />
-
-        {/* Se acessar qualquer rota desconhecida, redireciona para dashboard ou login */}
+        <Route
+          path="/conexao"
+          element={
+            <PrivateRoute>
+              <ConfigConexao user={user} />
+            </PrivateRoute>
+          }
+        />
         <Route
           path="*"
           element={user ? <Navigate to="/dashboard" /> : <Navigate to="/login" />}
