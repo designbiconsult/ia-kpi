@@ -1,10 +1,7 @@
-from fastapi import FastAPI, HTTPException, Query, Body
+from fastapi import FastAPI, HTTPException, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 from typing import List, Dict, Optional
-import pymysql
-import datetime
-import re
 
 app = FastAPI()
 app.add_middleware(
@@ -24,11 +21,10 @@ def get_conn():
 def init_db():
     with get_conn() as conn:
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS usuarios (
+            CREATE TABLE IF NOT EXISTS empresas (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nome TEXT,
-                email TEXT UNIQUE,
-                senha TEXT,
+                nome TEXT NOT NULL,
+                tipo_banco TEXT,
                 host TEXT,
                 porta TEXT,
                 usuario_banco TEXT,
@@ -37,343 +33,95 @@ def init_db():
             )
         """)
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS relacionamentos (
+            CREATE TABLE IF NOT EXISTS usuarios (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tabela_origem TEXT,
-                coluna_origem TEXT,
-                tabela_destino TEXT,
-                coluna_destino TEXT,
-                tipo_relacionamento TEXT
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS tabelas_sincronizadas (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                usuario_id INTEGER,
-                nome_tabela TEXT,
-                ultima_sincronizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(usuario_id, nome_tabela)
+                nome TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                senha TEXT NOT NULL,
+                empresa_id INTEGER,
+                perfil TEXT NOT NULL,
+                ativo INTEGER DEFAULT 1,
+                FOREIGN KEY (empresa_id) REFERENCES empresas(id)
             )
         """)
         conn.commit()
 
-@app.post("/usuarios")
-def cadastrar_usuario(usuario: Dict):
+# Simulação simples de autenticação (troque para JWT/sessão depois!)
+def get_current_user(email=Body(...), senha=Body(...)):
     with get_conn() as conn:
-        try:
-            conn.execute(
-                "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
-                (usuario['nome'], usuario['email'], usuario['senha'])
-            )
-            conn.commit()
-            return {"ok": True}
-        except sqlite3.IntegrityError:
-            raise HTTPException(status_code=400, detail="Email já cadastrado")
+        cur = conn.cursor()
+        cur.execute("SELECT id, nome, email, empresa_id, perfil, ativo FROM usuarios WHERE email=? AND senha=?", (email, senha))
+        row = cur.fetchone()
+        if not row or row[5] != 1:
+            raise HTTPException(status_code=401, detail="Usuário ou senha inválidos")
+        return {"id": row[0], "nome": row[1], "email": row[2], "empresa_id": row[3], "perfil": row[4]}
 
 @app.post("/login")
-def login(credentials: dict = Body(...)):
-    with get_conn() as conn:
-        c = conn.cursor()
-        c.execute(
-            "SELECT * FROM usuarios WHERE email = ? AND senha = ?",
-            (credentials["email"], credentials["senha"])
-        )
-        user = c.fetchone()
-        if user:
-            return {
-                "id": user[0],
-                "nome": user[1],
-                "email": user[2],
-                "host": user[4],
-                "porta": user[5],
-                "usuario_banco": user[6],
-                "senha_banco": user[7],
-                "schema": user[8]
-            }
-        else:
-            raise HTTPException(status_code=401, detail="Credenciais inválidas")
+def login(data: Dict = Body(...)):
+    user = get_current_user(data["email"], data["senha"])
+    return user
 
-@app.get("/usuarios/{id}")
-def get_usuario(id: int):
+@app.post("/empresas")
+def cadastrar_empresa(dados: Dict = Body(...), user: dict = Depends(get_current_user)):
+    if user["perfil"] != "admin_geral":
+        raise HTTPException(status_code=403, detail="Acesso restrito (admin geral)")
     with get_conn() as conn:
-        row = conn.execute(
-            "SELECT id, nome, email, host, porta, usuario_banco, senha_banco, schema FROM usuarios WHERE id=?",
-            (id,)
-        ).fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Usuário não encontrado")
-        return {
-            "id": row[0],
-            "nome": row[1],
-            "email": row[2],
-            "host": row[3],
-            "porta": row[4],
-            "usuario_banco": row[5],
-            "senha_banco": row[6],
-            "schema": row[7]
-        }
-
-@app.put("/usuarios/{id}/conexao")
-def atualizar_conexao(id: int, dados: dict):
-    with get_conn() as conn:
-        conn.execute(
-            "UPDATE usuarios SET host=?, porta=?, usuario_banco=?, senha_banco=?, schema=? WHERE id=?",
-            (
-                dados.get("host"),
-                dados.get("porta"),
-                dados.get("usuario_banco"),
-                dados.get("senha_banco"),
-                dados.get("schema"),
-                id
-            )
-        )
+        conn.execute("""
+            INSERT INTO empresas (nome, tipo_banco, host, porta, usuario_banco, senha_banco, schema)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            dados["nome"], dados.get("tipo_banco"), dados.get("host"), dados.get("porta"),
+            dados.get("usuario_banco"), dados.get("senha_banco"), dados.get("schema")
+        ))
         conn.commit()
     return {"ok": True}
 
-@app.get("/tabelas", response_model=List[str])
-def listar_tabelas():
+@app.post("/usuarios")
+def cadastrar_usuario(dados: Dict = Body(...), user: dict = Depends(get_current_user)):
+    # Só admin_geral pode criar usuários de qualquer empresa
+    # admin_cliente pode cadastrar usuários só da sua empresa
+    if user["perfil"] not in ["admin_geral", "admin_cliente"]:
+        raise HTTPException(status_code=403, detail="Acesso restrito")
+    empresa_id = dados.get("empresa_id") or user["empresa_id"]
+    if user["perfil"] == "admin_cliente" and empresa_id != user["empresa_id"]:
+        raise HTTPException(status_code=403, detail="Só pode cadastrar usuário da sua empresa")
     with get_conn() as conn:
-        tabelas = conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table','view')").fetchall()
-        return [t[0] for t in tabelas if t[0] not in ['relacionamentos', 'usuarios', 'sqlite_sequence', 'tabelas_sincronizadas']]
-
-@app.get("/colunas/{tabela}", response_model=List[str])
-def listar_colunas(tabela: str):
-    with get_conn() as conn:
-        cols = conn.execute(f"PRAGMA table_info({tabela})").fetchall()
-        return [c[1] for c in cols]
-
-@app.get("/relacionamentos", response_model=List[Dict])
-def get_relacionamentos():
-    with get_conn() as conn:
-        rows = conn.execute("SELECT * FROM relacionamentos").fetchall()
-        return [
-            {
-                "id": r[0],
-                "tabela_origem": r[1],
-                "coluna_origem": r[2],
-                "tabela_destino": r[3],
-                "coluna_destino": r[4],
-                "tipo_relacionamento": r[5]
-            }
-            for r in rows
-        ]
-
-@app.post("/relacionamentos")
-def criar_relacionamento(rel: Dict):
-    with get_conn() as conn:
-        conn.execute(
-            "INSERT INTO relacionamentos (tabela_origem, coluna_origem, tabela_destino, coluna_destino, tipo_relacionamento) VALUES (?, ?, ?, ?, ?)",
-            (rel['tabela_origem'], rel['coluna_origem'], rel['tabela_destino'], rel['coluna_destino'], rel['tipo_relacionamento'])
-        )
-        conn.commit()
-    return {"ok": True}
-
-@app.delete("/relacionamentos/{rel_id}")
-def deletar_relacionamento(rel_id: int):
-    with get_conn() as conn:
-        conn.execute("DELETE FROM relacionamentos WHERE id=?", (rel_id,))
-        conn.commit()
-    return {"ok": True}
-
-# ====== BLOCO DE SINCRONISMO ======
-
-def get_user_mysql_config(usuario_id: int):
-    with get_conn() as conn:
-        user = conn.execute("SELECT host, porta, usuario_banco, senha_banco, schema FROM usuarios WHERE id=?", (usuario_id,)).fetchone()
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    host, porta, usuario_banco, senha_banco, schema = user
-    if not all([host, porta, usuario_banco, senha_banco, schema]):
-        raise HTTPException(status_code=400, detail="Conexão não configurada")
-    return host, int(porta), usuario_banco, senha_banco, schema
-
-@app.get("/sincronismo/tabelas")
-def listar_tabelas_sincronismo(usuario_id: int = Query(...)):
-    with get_conn() as conn:
-        res1 = conn.execute("SELECT nome_tabela FROM tabelas_sincronizadas WHERE usuario_id=?", (usuario_id,))
-        sincronizadas = [r[0] for r in res1.fetchall()]
-    host, porta, usuario_banco, senha_banco, schema = get_user_mysql_config(usuario_id)
-    try:
-        conn_mysql = pymysql.connect(
-            host=host, port=porta, user=usuario_banco, password=senha_banco,
-            database=schema, charset='utf8mb4'
-        )
-        with conn_mysql.cursor() as cur:
-            cur.execute("""SELECT table_name FROM information_schema.tables WHERE table_schema = %s""", (schema,))
-            resultado_tabelas = [row[0] for row in cur.fetchall()]
-            cur.execute("""SELECT table_name FROM information_schema.views WHERE table_schema = %s""", (schema,))
-            resultado_views = [row[0] for row in cur.fetchall()]
-        conn_mysql.close()
-        novas_tabelas = [t for t in (resultado_tabelas + resultado_views) if t not in sincronizadas]
-        return {
-            "sincronizadas": sincronizadas,
-            "novas": novas_tabelas
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao conectar MySQL: {str(e)}")
-
-def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
-    with mysql_conn.cursor() as cur:
-        cur.execute(f"SHOW CREATE TABLE `{tabela}`")
-        create_table_sql = cur.fetchone()[1]
-
-        # 1. Troca ` por "
-        create_table_sql = create_table_sql.replace('`', '"')
-
-        # 2. Remove linhas e palavras não suportadas pelo SQLite
-        lines = create_table_sql.splitlines()
-        new_lines = []
-        for line in lines:
-            if any(word in line.upper() for word in ["ENGINE", "CHARSET", "COLLATE", "KEY ", "CONSTRAINT", "AUTO_INCREMENT", "COMMENT", "ZEROFILL"]):
-                continue
-            line = line.replace("NOT NULL", "")
-            line = line.replace("DEFAULT NULL", "")
-            line = line.replace("unsigned", "")
-            new_lines.append(line)
-
-        # Junta tudo em uma linha, limpando espaços
-        create_table_sql = " ".join([l.strip() for l in new_lines if l.strip()])
-
-        # REMOVE QUALQUER VÍRGULA ANTES DO PARÊNTESE FINAL!
-        # Remove vírgula antes de qualquer ), ou );
-        create_table_sql = re.sub(r',\s*(\))', r'\1', create_table_sql)
-        create_table_sql = re.sub(r',\s*(\);)', r'\1', create_table_sql)
-        # Se por algum motivo terminar com vírgula, remove (situação rara, mas previne!)
-        if create_table_sql.rstrip().endswith(','):
-            create_table_sql = create_table_sql.rstrip()[:-1] + ')'
-
-        # Limpeza final
-        create_table_sql = re.sub(r'\s+', ' ', create_table_sql).strip()
-        if not create_table_sql.endswith(");"):
-            if create_table_sql.endswith(")"):
-                create_table_sql += ";"
-            else:
-                create_table_sql += ");"
-        print("CREATE TABLE final:", repr(create_table_sql))
-
-        # Executa no SQLite
-        sqlite_conn.execute(f'DROP TABLE IF EXISTS "{tabela}"')
         try:
-            sqlite_conn.execute(create_table_sql)
-        except Exception as e:
-            print("ERRO AO EXECUTAR SQL:", repr(create_table_sql))
-            raise e
-        sqlite_conn.commit()
+            conn.execute("""
+                INSERT INTO usuarios (nome, email, senha, empresa_id, perfil)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                dados["nome"], dados["email"], dados["senha"], empresa_id, dados.get("perfil", "user")
+            ))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=400, detail="Email já cadastrado")
+    return {"ok": True}
 
-        # Copiar dados
-        cur.execute(f"SELECT * FROM `{tabela}`")
-        rows = cur.fetchall()
-        if rows:
-            col_names = [desc[0] for desc in cur.description]
-            placeholders = ','.join(['?' for _ in col_names])
-            sqlite_conn.executemany(
-                f'INSERT INTO "{tabela}" ({",".join(col_names)}) VALUES ({placeholders})',
-                rows
-            )
-            sqlite_conn.commit()
-
-@app.post("/sincronismo/sincronizar-novas")
-def sincronizar_novas(
-    usuario_id: int = Body(...),
-    tabelas: List[str] = Body(...)
-):
-    host, porta, usuario_banco, senha_banco, schema = get_user_mysql_config(usuario_id)
-    try:
-        conn_mysql = pymysql.connect(
-            host=host, port=porta, user=usuario_banco, password=senha_banco,
-            database=schema, charset='utf8mb4'
-        )
-        with get_conn() as sqlite_conn:
-            for tabela in tabelas:
-                copy_table_from_mysql_to_sqlite(conn_mysql, sqlite_conn, tabela)
-                sqlite_conn.execute("""
-                    INSERT OR IGNORE INTO tabelas_sincronizadas (usuario_id, nome_tabela)
-                    VALUES (?, ?)
-                """, (usuario_id, tabela))
-            sqlite_conn.commit()
-        conn_mysql.close()
-        return {"ok": True}
-    except Exception as e:
-        print("Erro detalhado ao sincronizar:", str(e))
-        raise HTTPException(status_code=500, detail=f"Erro ao sincronizar: {str(e)}")
-
-@app.post("/sincronismo/atualizar")
-def atualizar_sincronizadas(
-    usuario_id: int = Body(...),
-    tabelas: List[str] = Body(...)
-):
-    host, porta, usuario_banco, senha_banco, schema = get_user_mysql_config(usuario_id)
-    try:
-        conn_mysql = pymysql.connect(
-            host=host, port=porta, user=usuario_banco, password=senha_banco,
-            database=schema, charset='utf8mb4'
-        )
-        with get_conn() as sqlite_conn:
-            for tabela in tabelas:
-                copy_table_from_mysql_to_sqlite(conn_mysql, sqlite_conn, tabela)
-                sqlite_conn.execute("""
-                    UPDATE tabelas_sincronizadas
-                    SET ultima_sincronizacao = CURRENT_TIMESTAMP
-                    WHERE usuario_id=? AND nome_tabela=?
-                """, (usuario_id, tabela))
-            sqlite_conn.commit()
-        conn_mysql.close()
-        return {"ok": True}
-    except Exception as e:
-        print("Erro detalhado ao atualizar:", str(e))
-        raise HTTPException(status_code=500, detail=f"Erro ao atualizar: {str(e)}")
-
-# ====== FIM DO BLOCO DE SINCRONISMO ======
-
-@app.get("/tabelas-remotas", response_model=List[str])
-def tabelas_remotas(usuario_id: int = Query(...)):
-    host, porta, usuario_banco, senha_banco, schema = get_user_mysql_config(usuario_id)
-    try:
-        conn_mysql = pymysql.connect(
-            host=host, port=porta, user=usuario_banco, password=senha_banco,
-            database=schema, charset='utf8mb4'
-        )
-        with conn_mysql.cursor() as cur:
-            cur.execute("""
-                SELECT table_name FROM information_schema.tables
-                WHERE table_schema = %s
-            """, (schema,))
-            resultado_tabelas = [row[0] for row in cur.fetchall()]
-            cur.execute("""
-                SELECT table_name FROM information_schema.views
-                WHERE table_schema = %s
-            """, (schema,))
-            resultado_views = [row[0] for row in cur.fetchall()]
-        conn_mysql.close()
-        return resultado_tabelas + resultado_views
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao conectar MySQL: {str(e)}")
-    
-@app.get("/debug-usuario/{usuario_id}")
-def debug_usuario(usuario_id: int):
+@app.get("/usuarios")
+def listar_usuarios(user: dict = Depends(get_current_user)):
     with get_conn() as conn:
-        user = conn.execute("SELECT host, porta, usuario_banco, senha_banco, schema FROM usuarios WHERE id=?", (usuario_id,)).fetchone()
-        return {"user": user}
+        if user["perfil"] == "admin_geral":
+            rows = conn.execute("SELECT id, nome, email, empresa_id, perfil, ativo FROM usuarios").fetchall()
+        else:
+            rows = conn.execute("SELECT id, nome, email, empresa_id, perfil, ativo FROM usuarios WHERE empresa_id=?", (user["empresa_id"],)).fetchall()
+        return [dict(id=r[0], nome=r[1], email=r[2], empresa_id=r[3], perfil=r[4], ativo=r[5]) for r in rows]
+
+@app.post("/sincronismo")
+def sincronizar(user: dict = Depends(get_current_user)):
+    # Só admin_geral OU admin_cliente pode sincronizar
+    if user["perfil"] not in ["admin_geral", "admin_cliente"]:
+        raise HTTPException(status_code=403, detail="Acesso restrito")
+    # Aqui ficaria a lógica de sincronismo para o banco da empresa do user
+    return {"ok": True, "empresa_id": user["empresa_id"]}
 
 @app.get("/indicadores")
-def indicadores(setor: str = Query(...)):
-    if setor.lower() == "financeiro":
-        return {
-            "Receitas do mês": 100000,
-            "Despesas do mês": 50000,
-            "Saldo em Caixa": 50000
-        }
-    elif setor.lower() == "comercial":
-        return {
-            "Pedidos fechados": 120,
-            "Clientes novos": 15,
-            "Ticket médio": 800
-        }
-    elif setor.lower() == "producao":
-        return {
-            "Peças produzidas": 6000,
-            "Horas trabalhadas": 900,
-            "Modelos diferentes": 25
-        }
-    else:
-        return {}
+def consultar_indicadores(user: dict = Depends(get_current_user)):
+    # Usuário de qualquer perfil pode consultar indicadores da sua empresa
+    return {
+        "empresa_id": user["empresa_id"],
+        "indicadores": [
+            {"nome": "Receitas", "valor": 10000},
+            {"nome": "Despesas", "valor": 5000},
+        ]
+    }
