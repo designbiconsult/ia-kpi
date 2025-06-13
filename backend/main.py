@@ -213,7 +213,8 @@ def listar_tabelas_sincronismo(usuario_id: int = Query(...)):
         raise HTTPException(status_code=500, detail=f"Erro ao conectar MySQL: {str(e)}")
 
 def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
-    # Copia estrutura e dados da tabela do MySQL para o SQLite
+    import re
+
     with mysql_conn.cursor() as cur:
         cur.execute(f"SHOW CREATE TABLE `{tabela}`")
         create_table_sql = cur.fetchone()[1]
@@ -231,17 +232,17 @@ def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
             line = line.replace("DEFAULT NULL", "")
             line = line.replace("unsigned", "")
             new_lines.append(line)
-        create_table_sql = "\n".join(new_lines)
 
-        # --------- AJUSTE CRÍTICO AGRESSIVO --------------
-        # Junta em uma linha só
-        create_table_sql = create_table_sql.replace('\n', ' ')
-        # Remove todas as vírgulas antes do parêntese de fechamento
-        create_table_sql = re.sub(r',\s*\)', ')', create_table_sql)
-        create_table_sql = re.sub(r',\s*\);', ');', create_table_sql)
-        # Remove múltiplos espaços em branco
-        create_table_sql = re.sub(r'\s+', ' ', create_table_sql)
-        create_table_sql = create_table_sql.strip()
+        # Junta as linhas, limpando espaços
+        create_table_sql = " ".join([l.strip() for l in new_lines if l.strip()])
+        
+        # >>>>>> AJUSTE CRÍTICO: remove a vírgula antes do fechamento do bloco <<<<<<
+        # Remove qualquer vírgula antes do fechamento do bloco (parêntese de fechamento, com ou sem ponto e vírgula, com ou sem espaço)
+        create_table_sql = re.sub(r',\s*(\))', r'\1', create_table_sql)
+        create_table_sql = re.sub(r',\s*(\);)', r'\1', create_table_sql)
+        
+        # Limpeza final
+        create_table_sql = re.sub(r'\s+', ' ', create_table_sql).strip()
         if not create_table_sql.endswith(");"):
             if create_table_sql.endswith(")"):
                 create_table_sql += ";"
@@ -269,6 +270,7 @@ def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
                 rows
             )
             sqlite_conn.commit()
+
 
 @app.post("/sincronismo/sincronizar-novas")
 def sincronizar_novas(
