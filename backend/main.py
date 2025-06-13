@@ -4,6 +4,7 @@ import sqlite3
 from typing import List, Dict, Optional
 import pymysql
 import datetime
+import re
 
 app = FastAPI()
 app.add_middleware(
@@ -213,35 +214,32 @@ def listar_tabelas_sincronismo(usuario_id: int = Query(...)):
 
 def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
     # Copia estrutura e dados da tabela do MySQL para o SQLite
-    import re
-
     with mysql_conn.cursor() as cur:
         cur.execute(f"SHOW CREATE TABLE `{tabela}`")
         create_table_sql = cur.fetchone()[1]
 
         # Adaptar para SQLite:
-        # 1. Substituir ` por " (mas só em nomes de tabela e coluna, não no CREATE TABLE ... AS)
+        # 1. Substituir ` por "
         create_table_sql = create_table_sql.replace('`', '"')
 
-        # 2. Remove linhas que mencionam ENGINE, CHARSET, COLLATE, KEY, CONSTRAINT, AUTO_INCREMENT, etc
+        # 2. Remove linhas/fragmentos não suportados pelo SQLite
         lines = create_table_sql.splitlines()
         new_lines = []
         for line in lines:
             if any(word in line.upper() for word in ["ENGINE", "CHARSET", "COLLATE", "KEY ", "CONSTRAINT", "AUTO_INCREMENT", "COMMENT", "ZEROFILL"]):
                 continue
-            # Remove NOT NULL e DEFAULT NULL (SQLite permite nulo por padrão)
             line = line.replace("NOT NULL", "")
             line = line.replace("DEFAULT NULL", "")
-            # Remove unsigned
             line = line.replace("unsigned", "")
             new_lines.append(line)
         create_table_sql = "\n".join(new_lines)
 
-                # 3. Remover vírgulas duplas, parênteses extras e espaços
-        create_table_sql = re.sub(r',\s*\)', ')', create_table_sql)  # <--- esta linha remove a última vírgula
+        # Remove vírgula final antes do parêntese (ajuste crítico)
+        create_table_sql = re.sub(r',\s*\)', ')', create_table_sql)
+        # Remove espaços duplicados
         create_table_sql = re.sub(r'\s+', ' ', create_table_sql)
 
-        # 4. Garante que termina apenas com ");"
+        # Garante finalização correta
         if not create_table_sql.strip().endswith(");"):
             create_table_sql = create_table_sql.strip()
             if create_table_sql.endswith(")"):
@@ -258,7 +256,17 @@ def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
             raise e
         sqlite_conn.commit()
 
-
+        # Copiar dados
+        cur.execute(f"SELECT * FROM `{tabela}`")
+        rows = cur.fetchall()
+        if rows:
+            col_names = [desc[0] for desc in cur.description]
+            placeholders = ','.join(['?' for _ in col_names])
+            sqlite_conn.executemany(
+                f'INSERT INTO "{tabela}" ({",".join(col_names)}) VALUES ({placeholders})',
+                rows
+            )
+            sqlite_conn.commit()
 
 @app.post("/sincronismo/sincronizar-novas")
 def sincronizar_novas(
@@ -285,7 +293,6 @@ def sincronizar_novas(
         print("Erro detalhado ao sincronizar:", str(e))
         raise HTTPException(status_code=500, detail=f"Erro ao sincronizar: {str(e)}")
 
-
 @app.post("/sincronismo/atualizar")
 def atualizar_sincronizadas(
     usuario_id: int = Body(...),
@@ -309,6 +316,7 @@ def atualizar_sincronizadas(
         conn_mysql.close()
         return {"ok": True}
     except Exception as e:
+        print("Erro detalhado ao atualizar:", str(e))
         raise HTTPException(status_code=500, detail=f"Erro ao atualizar: {str(e)}")
 
 # ====== FIM DO BLOCO DE SINCRONISMO ======
