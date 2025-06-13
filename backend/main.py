@@ -233,8 +233,10 @@ def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
             new_lines.append(line)
         create_table_sql = "\n".join(new_lines)
 
-        # --------- AJUSTE CRÍTICO AQUI --------------
+        # --------- AJUSTE CRÍTICO AQUI (anti-vírgula final) --------------
         # Remove vírgula(s) antes do fechamento do parêntese final
+        create_table_sql = re.sub(r',\s*\)', ')', create_table_sql)
+        # Repete duas vezes só para garantir (caso ocorra mais de uma ocorrência)
         create_table_sql = re.sub(r',\s*\)', ')', create_table_sql)
         # Remove espaços duplicados
         create_table_sql = re.sub(r'\s+', ' ', create_table_sql)
@@ -244,14 +246,15 @@ def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
                 create_table_sql += ";"
             else:
                 create_table_sql += ");"
-        # --------------------------------------------
+        # DEBUG: mostra o SQL final sempre
+        print("CREATE TABLE final:", create_table_sql)
 
         # Executa no SQLite
         sqlite_conn.execute(f'DROP TABLE IF EXISTS "{tabela}"')
         try:
             sqlite_conn.execute(create_table_sql)
         except Exception as e:
-            print("CREATE TABLE final:", create_table_sql)
+            print("ERRO AO EXECUTAR SQL:", create_table_sql)
             raise e
         sqlite_conn.commit()
 
