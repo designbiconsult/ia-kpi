@@ -1,37 +1,85 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { api } from '../api';
+import {
+  Box, Card, CardContent, Typography, TextField, Button, Alert, Stack
+} from '@mui/material';
+import axios from 'axios';
 
 export default function Login({ onLogin }) {
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [msg, setMsg] = useState("");
-  const navigate = useNavigate();
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+  const [erro, setErro] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e) => {
+  const handleLogin = (e) => {
     e.preventDefault();
-    setMsg("");
-    try {
-      const { data } = await api.post('/login', { email, senha });
-      onLogin(data);
-      navigate("/dashboard");
-    } catch (err) {
-      setMsg("Credenciais inválidas");
-    }
+    setErro('');
+    setLoading(true);
+
+    axios.post('/login', { email, senha })
+      .then(res => {
+        onLogin && onLogin(res.data);
+      })
+      .catch(() => setErro('E-mail ou senha inválidos!'))
+      .finally(() => setLoading(false));
   };
 
   return (
-    <div className="login-box">
-      <h2>Login IA KPI</h2>
-      <form onSubmit={handleLogin}>
-        <input placeholder="E-mail" value={email} onChange={e => setEmail(e.target.value)} />
-        <input type="password" placeholder="Senha" value={senha} onChange={e => setSenha(e.target.value)} />
-        <button type="submit">Entrar</button>
-      </form>
-      {msg && <div className="error">{msg}</div>}
-      <p>
-        Não tem conta? <span className="link" onClick={() => navigate("/cadastro")}>Cadastre-se</span>
-      </p>
-    </div>
+    <Box
+      minHeight="100vh"
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      sx={{ background: "#f8fafd" }}
+    >
+      <Card sx={{
+        minWidth: 350,
+        maxWidth: 400,
+        px: 3, py: 4,
+        borderRadius: 4,
+        boxShadow: 3,
+        background: "#fff"
+      }}>
+        <CardContent>
+          <Typography variant="h5" fontWeight={700} textAlign="center" mb={2}>
+            IA-KPI - Login
+          </Typography>
+
+          <form onSubmit={handleLogin} autoComplete="off">
+            <Stack spacing={2}>
+              <TextField
+                label="E-mail"
+                variant="outlined"
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                fullWidth
+                required
+              />
+              <TextField
+                label="Senha"
+                variant="outlined"
+                type="password"
+                value={senha}
+                onChange={e => setSenha(e.target.value)}
+                fullWidth
+                required
+              />
+              {erro && <Alert severity="error">{erro}</Alert>}
+              <Button
+                variant="contained"
+                color="primary"
+                type="submit"
+                disabled={loading}
+                size="large"
+                sx={{ fontWeight: 700, mt: 1 }}
+                fullWidth
+              >
+                {loading ? 'Entrando...' : 'Entrar'}
+              </Button>
+            </Stack>
+          </form>
+        </CardContent>
+      </Card>
+    </Box>
   );
 }
