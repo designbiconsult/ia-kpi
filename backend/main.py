@@ -208,8 +208,8 @@ def atualizar_conexao(
                 schema = ?
             WHERE id = ?
         """, (
-            body.tipo_banco, body.host, body.porta,
-            body.usuario_banco, body.senha_banco, body.schema,
+            conexao.tipo_banco, conexao.host, conexao.porta,
+            conexao.usuario_banco, conexao.senha_banco, conexao.schema,
             empresa_id
         ))
         conn.commit()
