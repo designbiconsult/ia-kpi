@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Body
+from fastapi import FastAPI, HTTPException, Depends, Body, Path
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 from typing import List, Dict, Optional
@@ -45,8 +45,19 @@ def init_db():
             )
         """)
         conn.commit()
+        # Cria admin_geral se não houver nenhum
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM usuarios WHERE perfil='admin_geral'")
+        if not cur.fetchone():
+            conn.execute("""
+                INSERT INTO usuarios (nome, email, senha, empresa_id, perfil, ativo)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                "Admin Geral", "admin@empresa.com", "123", None, "admin_geral", 1
+            ))
+            conn.commit()
 
-# Simulação simples de autenticação (troque para JWT/sessão depois!)
+# Simulação simples de autenticação (substitua por JWT/sessão em produção!)
 def get_current_user(email=Body(...), senha=Body(...)):
     with get_conn() as conn:
         cur = conn.cursor()
@@ -75,6 +86,46 @@ def cadastrar_empresa(dados: Dict = Body(...), user: dict = Depends(get_current_
         ))
         conn.commit()
     return {"ok": True}
+
+@app.put("/empresas/{empresa_id}")
+def atualizar_empresa(
+    empresa_id: int = Path(...),
+    dados: Dict = Body(...),
+    user: dict = Depends(get_current_user)
+):
+    if user["perfil"] != "admin_geral":
+        raise HTTPException(status_code=403, detail="Acesso restrito (admin geral)")
+    with get_conn() as conn:
+        conn.execute("""
+            UPDATE empresas SET
+                nome = ?,
+                tipo_banco = ?,
+                host = ?,
+                porta = ?,
+                usuario_banco = ?,
+                senha_banco = ?,
+                schema = ?
+            WHERE id = ?
+        """, (
+            dados["nome"], dados.get("tipo_banco"), dados.get("host"), dados.get("porta"),
+            dados.get("usuario_banco"), dados.get("senha_banco"), dados.get("schema"),
+            empresa_id
+        ))
+        conn.commit()
+    return {"ok": True}
+
+@app.get("/empresas")
+def listar_empresas(user: dict = Depends(get_current_user)):
+    if user["perfil"] != "admin_geral":
+        raise HTTPException(status_code=403, detail="Acesso restrito (admin geral)")
+    with get_conn() as conn:
+        rows = conn.execute("SELECT id, nome, tipo_banco, host, porta, usuario_banco, schema FROM empresas").fetchall()
+        return [
+            dict(
+                id=r[0], nome=r[1], tipo_banco=r[2], host=r[3], porta=r[4],
+                usuario_banco=r[5], schema=r[6]
+            ) for r in rows
+        ]
 
 @app.post("/usuarios")
 def cadastrar_usuario(dados: Dict = Body(...), user: dict = Depends(get_current_user)):
