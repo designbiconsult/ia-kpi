@@ -237,8 +237,8 @@ def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
             new_lines.append(line)
         create_table_sql = "\n".join(new_lines)
 
-        # 3. Remover vírgulas duplas, parênteses extras e espaços
-        create_table_sql = re.sub(r',\s*\)', '\n)', create_table_sql)
+                # 3. Remover vírgulas duplas, parênteses extras e espaços
+        create_table_sql = re.sub(r',\s*\)', ')', create_table_sql)  # <--- esta linha remove a última vírgula
         create_table_sql = re.sub(r'\s+', ' ', create_table_sql)
 
         # 4. Garante que termina apenas com ");"
@@ -258,17 +258,6 @@ def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
             raise e
         sqlite_conn.commit()
 
-        # Copiar dados
-        cur.execute(f"SELECT * FROM `{tabela}`")
-        rows = cur.fetchall()
-        if rows:
-            col_names = [desc[0] for desc in cur.description]
-            placeholders = ','.join(['?' for _ in col_names])
-            sqlite_conn.executemany(
-                f'INSERT INTO "{tabela}" ({",".join(col_names)}) VALUES ({placeholders})',
-                rows
-            )
-            sqlite_conn.commit()
 
 
 @app.post("/sincronismo/sincronizar-novas")
