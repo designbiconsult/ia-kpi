@@ -213,8 +213,6 @@ def listar_tabelas_sincronismo(usuario_id: int = Query(...)):
         raise HTTPException(status_code=500, detail=f"Erro ao conectar MySQL: {str(e)}")
 
 def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
-    import re
-
     with mysql_conn.cursor() as cur:
         cur.execute(f"SHOW CREATE TABLE `{tabela}`")
         create_table_sql = cur.fetchone()[1]
@@ -233,14 +231,17 @@ def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
             line = line.replace("unsigned", "")
             new_lines.append(line)
 
-        # Junta as linhas, limpando espaços
+        # Junta tudo em uma linha, limpando espaços
         create_table_sql = " ".join([l.strip() for l in new_lines if l.strip()])
-        
-        # >>>>>> AJUSTE CRÍTICO: remove a vírgula antes do fechamento do bloco <<<<<<
-        # Remove qualquer vírgula antes do fechamento do bloco (parêntese de fechamento, com ou sem ponto e vírgula, com ou sem espaço)
+
+        # REMOVE QUALQUER VÍRGULA ANTES DO PARÊNTESE FINAL!
+        # Remove vírgula antes de qualquer ), ou );
         create_table_sql = re.sub(r',\s*(\))', r'\1', create_table_sql)
         create_table_sql = re.sub(r',\s*(\);)', r'\1', create_table_sql)
-        
+        # Se por algum motivo terminar com vírgula, remove (situação rara, mas previne!)
+        if create_table_sql.rstrip().endswith(','):
+            create_table_sql = create_table_sql.rstrip()[:-1] + ')'
+
         # Limpeza final
         create_table_sql = re.sub(r'\s+', ' ', create_table_sql).strip()
         if not create_table_sql.endswith(");"):
@@ -248,14 +249,14 @@ def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
                 create_table_sql += ";"
             else:
                 create_table_sql += ");"
-        print("CREATE TABLE final:", create_table_sql)
+        print("CREATE TABLE final:", repr(create_table_sql))
 
         # Executa no SQLite
         sqlite_conn.execute(f'DROP TABLE IF EXISTS "{tabela}"')
         try:
             sqlite_conn.execute(create_table_sql)
         except Exception as e:
-            print("ERRO AO EXECUTAR SQL:", create_table_sql)
+            print("ERRO AO EXECUTAR SQL:", repr(create_table_sql))
             raise e
         sqlite_conn.commit()
 
@@ -270,7 +271,6 @@ def copy_table_from_mysql_to_sqlite(mysql_conn, sqlite_conn, tabela):
                 rows
             )
             sqlite_conn.commit()
-
 
 @app.post("/sincronismo/sincronizar-novas")
 def sincronizar_novas(
