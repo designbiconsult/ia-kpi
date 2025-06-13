@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Box, Card, CardContent, Typography, TextField, Button, Alert, Stack } from "@mui/material";
+import { Box, Card, CardContent, Typography, TextField, Button, Alert, Stack, MenuItem } from "@mui/material";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
@@ -21,7 +21,6 @@ export default function ConfigConexao({ user }) {
   useEffect(() => {
     async function fetchConexao() {
       try {
-        // Precisa autenticar enviando email/senha do user no body (como no backend)
         const { data } = await axios.get(
           `http://localhost:8000/empresas/${user.empresa_id}`,
           {
@@ -86,11 +85,24 @@ export default function ConfigConexao({ user }) {
           </Stack>
           <form onSubmit={handleSubmit} autoComplete="off">
             <Stack spacing={2}>
-              <TextField label="Tipo de Banco" name="tipo_banco" value={form.tipo_banco} onChange={handleChange} required />
+              <TextField
+                select
+                label="Tipo de Banco"
+                name="tipo_banco"
+                value={form.tipo_banco}
+                onChange={handleChange}
+                required
+              >
+                <MenuItem value="">Selecione...</MenuItem>
+                <MenuItem value="mysql">MySQL / MariaDB</MenuItem>
+                <MenuItem value="postgres">PostgreSQL</MenuItem>
+                <MenuItem value="oracle">Oracle</MenuItem>
+                <MenuItem value="mssql">SQL Server</MenuItem>
+              </TextField>
               <TextField label="Host" name="host" value={form.host} onChange={handleChange} required />
               <TextField label="Porta" name="porta" value={form.porta} onChange={handleChange} required />
               <TextField label="Usuário do Banco" name="usuario_banco" value={form.usuario_banco} onChange={handleChange} required />
-              <TextField label="Senha do Banco" name="senha_banco" value={form.senha_banco} onChange={handleChange} required />
+              <TextField label="Senha do Banco" name="senha_banco" type="password" value={form.senha_banco} onChange={handleChange} required />
               <TextField label="Schema/Banco" name="schema" value={form.schema} onChange={handleChange} required />
               {msg && <Alert severity="error">{msg}</Alert>}
               {ok && <Alert severity="success">Conexão salva com sucesso!</Alert>}
