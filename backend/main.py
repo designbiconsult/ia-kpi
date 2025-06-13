@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, Body, Path
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 app = FastAPI()
 app.add_middleware(
@@ -57,7 +57,7 @@ def init_db():
             ))
             conn.commit()
 
-# Simulação simples de autenticação (substitua por JWT/sessão em produção!)
+# Simples autenticação (trocar por JWT em produção)
 def get_current_user(email=Body(...), senha=Body(...)):
     with get_conn() as conn:
         cur = conn.cursor()
@@ -72,6 +72,7 @@ def login(data: Dict = Body(...)):
     user = get_current_user(data["email"], data["senha"])
     return user
 
+# ----- Cadastro de empresa: PÚBLICO (NÃO precisa autenticação) -----
 @app.post("/empresas")
 def cadastrar_empresa(dados: Dict = Body(...)):
     with get_conn() as conn:
@@ -85,7 +86,7 @@ def cadastrar_empresa(dados: Dict = Body(...)):
         conn.commit()
     return {"ok": True}
 
-
+# ----- Atualização de empresa: PROTEGIDO -----
 @app.put("/empresas/{empresa_id}")
 def atualizar_empresa(
     empresa_id: int = Path(...),
@@ -126,10 +127,9 @@ def listar_empresas(user: dict = Depends(get_current_user)):
             ) for r in rows
         ]
 
+# ----- Cadastro de usuário: REQUER autenticação de admin -----
 @app.post("/usuarios")
 def cadastrar_usuario(dados: Dict = Body(...), user: dict = Depends(get_current_user)):
-    # Só admin_geral pode criar usuários de qualquer empresa
-    # admin_cliente pode cadastrar usuários só da sua empresa
     if user["perfil"] not in ["admin_geral", "admin_cliente"]:
         raise HTTPException(status_code=403, detail="Acesso restrito")
     empresa_id = dados.get("empresa_id") or user["empresa_id"]
@@ -159,7 +159,6 @@ def listar_usuarios(user: dict = Depends(get_current_user)):
 
 @app.post("/sincronismo")
 def sincronizar(user: dict = Depends(get_current_user)):
-    # Só admin_geral OU admin_cliente pode sincronizar
     if user["perfil"] not in ["admin_geral", "admin_cliente"]:
         raise HTTPException(status_code=403, detail="Acesso restrito")
     # Aqui ficaria a lógica de sincronismo para o banco da empresa do user
@@ -167,7 +166,6 @@ def sincronizar(user: dict = Depends(get_current_user)):
 
 @app.get("/indicadores")
 def consultar_indicadores(user: dict = Depends(get_current_user)):
-    # Usuário de qualquer perfil pode consultar indicadores da sua empresa
     return {
         "empresa_id": user["empresa_id"],
         "indicadores": [
