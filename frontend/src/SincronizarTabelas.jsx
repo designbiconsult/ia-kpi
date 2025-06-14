@@ -3,7 +3,7 @@ import {
   Box, Card, CardContent, Typography, Button, Checkbox,
   FormControlLabel, Stack, Divider, CircularProgress, Snackbar, Alert, Avatar
 } from '@mui/material';
-import { api } from "../api";
+import { api } from "./api";
 import { useNavigate } from 'react-router-dom';
 
 export default function SincronizarTabelas({ user, onLogout }) {
