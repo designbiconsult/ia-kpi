@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Path, Body, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, List, Optional
+from typing import Dict, List
 from pydantic import BaseModel
 import sqlite3
 
@@ -18,7 +18,6 @@ DB_PATH = "database.db"
 def get_conn():
     return sqlite3.connect(DB_PATH)
 
-# Inicializa tabelas se não existem
 @app.on_event("startup")
 def init_db():
     with get_conn() as conn:
@@ -49,7 +48,6 @@ def init_db():
         """)
         conn.commit()
 
-# Pydantic para conexão
 class ConexaoInput(BaseModel):
     tipo_banco: str
     host: str
@@ -60,14 +58,12 @@ class ConexaoInput(BaseModel):
     email: str
     senha: str
 
-# Pydantic para cadastro de empresa e admin inicial
 class EmpresaCadastroInput(BaseModel):
     nome_empresa: str
     nome_usuario: str
     email: str
     senha: str
 
-# --- AUTENTICAÇÃO ---
 def get_current_user(email: str = Body(...), senha: str = Body(...)):
     with get_conn() as conn:
         c = conn.cursor()
@@ -85,7 +81,6 @@ def get_current_user(email: str = Body(...), senha: str = Body(...)):
             "empresa_id": row[3]
         }
 
-# --- CADASTRO DE EMPRESA + USUÁRIO ADMIN CLIENTE ---
 @app.post("/empresas/cadastro_completo")
 def cadastrar_empresa(input: EmpresaCadastroInput):
     with get_conn() as conn:
@@ -104,7 +99,6 @@ def cadastrar_empresa(input: EmpresaCadastroInput):
         except sqlite3.IntegrityError:
             raise HTTPException(status_code=400, detail="Email já cadastrado.")
 
-# --- CADASTRO USUÁRIO ADMIN GERAL (manual: primeiro usuário) ---
 @app.post("/usuarios/admin_geral")
 def criar_admin_geral(nome: str = Body(...), email: str = Body(...), senha: str = Body(...)):
     with get_conn() as conn:
@@ -118,7 +112,6 @@ def criar_admin_geral(nome: str = Body(...), email: str = Body(...), senha: str 
         except sqlite3.IntegrityError:
             raise HTTPException(status_code=400, detail="Email já cadastrado.")
 
-# --- LOGIN ---
 @app.post("/login")
 def login(email: str = Body(...), senha: str = Body(...)):
     with get_conn() as conn:
@@ -135,12 +128,11 @@ def login(email: str = Body(...), senha: str = Body(...)):
                 "perfil": user[2],
                 "empresa_id": user[3],
                 "email": email,
-                "senha": senha  # Apenas para manter no frontend temporariamente!
+                "senha": senha
             }
         else:
             raise HTTPException(status_code=401, detail="Credenciais inválidas.")
 
-# --- CADASTRO DE USUÁRIOS (clientes criam mais usuários depois) ---
 @app.post("/usuarios")
 def cadastrar_usuario(
     nome: str = Body(...),
@@ -160,7 +152,6 @@ def cadastrar_usuario(
         except sqlite3.IntegrityError:
             raise HTTPException(status_code=400, detail="Email já cadastrado.")
 
-# --- BUSCA DADOS DA EMPRESA (incluindo dados de conexão) ---
 @app.get("/empresas/{empresa_id}")
 def dados_empresa(
     empresa_id: int = Path(...),
@@ -188,11 +179,11 @@ def dados_empresa(
             "schema": row[7]
         }
 
-# --- ATUALIZA DADOS DE CONEXÃO ---
+# --- ENDPOINT COM embed=False ---
 @app.put("/empresas/{empresa_id}/conexao")
 def atualizar_conexao(
     empresa_id: int,
-    conexao: ConexaoInput,
+    conexao: ConexaoInput = Body(..., embed=False),
     user: dict = Depends(get_current_user)
 ):
     if user["perfil"] != "admin_geral" and user["empresa_id"] != empresa_id:
@@ -215,10 +206,8 @@ def atualizar_conexao(
         conn.commit()
     return {"ok": True}
 
-# --- EXEMPLO DE INDICADORES ---
 @app.get("/indicadores")
 def indicadores(setor: str = Query(...)):
-    # Exemplo fictício
     if setor.lower() == "financeiro":
         return {
             "Receitas do mês": 100000,
@@ -240,7 +229,6 @@ def indicadores(setor: str = Query(...)):
     else:
         return {}
 
-# --- ADMIN: LISTA TODAS AS EMPRESAS E USUÁRIOS ---
 @app.get("/admin/empresas")
 def listar_empresas(
     email: str = Query(...),
