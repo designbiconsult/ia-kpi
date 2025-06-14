@@ -53,11 +53,12 @@ export default function ConfigConexao({ user }) {
     e.preventDefault();
     setMsg(""); setOk(false);
     try {
-      console.log("Payload enviado:", payload);
-      await axios.put(
-        `http://localhost:8000/empresas/${user.empresa_id}/conexao`,
-        { ...form, email: user.email, senha: user.senha }
-      );
+      const payload = { ...form, email: user.email, senha: user.senha };
+console.log("Payload enviado:", payload);
+await axios.put(
+  `http://localhost:8000/empresas/${user.empresa_id}/conexao`,
+  payload
+);
       setOk(true);
       setMsg("");
     } catch (err) {
