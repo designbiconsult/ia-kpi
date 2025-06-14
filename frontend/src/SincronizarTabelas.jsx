@@ -18,7 +18,13 @@ export default function SincronizarTabelas({ user, onLogout }) {
   // Carrega listas
   const fetchTabelas = () => {
     setLoading(true);
-    api.get(`/sincronismo/tabelas?usuario_id=${user.id}`).then(res => {
+    api.get(`/sincronismo/tabelas`, {
+      params: {
+        empresa_id: user.empresa_id,
+        email: user.email,
+        senha: user.senha
+      }
+    }).then(res => {
       setSincronizadas(res.data.sincronizadas || []);
       setNovas(res.data.novas || []);
       setSelSync([]);
@@ -28,7 +34,7 @@ export default function SincronizarTabelas({ user, onLogout }) {
     }).finally(() => setLoading(false));
   };
 
-  useEffect(fetchTabelas, [user.id]);
+  useEffect(fetchTabelas, [user.empresa_id]);
 
   // Selecionar tudo/desmarcar
   const toggleAllSync = () =>
@@ -50,7 +56,12 @@ export default function SincronizarTabelas({ user, onLogout }) {
   const atualizar = () => {
     if (!selSync.length) return setMsg({ open: true, text: "Selecione ao menos uma tabela sincronizada!", severity: 'warning' });
     setLoading(true);
-    api.post('/sincronismo/atualizar', { usuario_id: user.id, tabelas: selSync })
+    api.post('/sincronismo/atualizar', {
+      empresa_id: user.empresa_id,
+      tabelas: selSync,
+      email: user.email,
+      senha: user.senha
+    })
       .then(() => {
         fetchTabelas();
         setMsg({ open: true, text: "Atualizado com sucesso!", severity: 'success' });
@@ -61,7 +72,12 @@ export default function SincronizarTabelas({ user, onLogout }) {
   const atualizarTodas = () => {
     if (!sincronizadas.length) return setMsg({ open: true, text: "Não há tabelas sincronizadas!", severity: 'warning' });
     setLoading(true);
-    api.post('/sincronismo/atualizar', { usuario_id: user.id, tabelas: sincronizadas })
+    api.post('/sincronismo/atualizar', {
+      empresa_id: user.empresa_id,
+      tabelas: sincronizadas,
+      email: user.email,
+      senha: user.senha
+    })
       .then(() => {
         fetchTabelas();
         setMsg({ open: true, text: "Todas atualizadas!", severity: 'success' });
@@ -72,7 +88,12 @@ export default function SincronizarTabelas({ user, onLogout }) {
   const sincronizarNovas = () => {
     if (!selNovas.length) return setMsg({ open: true, text: "Selecione ao menos uma nova tabela!", severity: 'warning' });
     setLoading(true);
-    api.post('/sincronismo/sincronizar-novas', { usuario_id: user.id, tabelas: selNovas })
+    api.post('/sincronismo/sincronizar-novas', {
+      empresa_id: user.empresa_id,
+      tabelas: selNovas,
+      email: user.email,
+      senha: user.senha
+    })
       .then(() => {
         fetchTabelas();
         setMsg({ open: true, text: "Sincronizado com sucesso!", severity: 'success' });
