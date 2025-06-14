@@ -1,7 +1,7 @@
-from fastapi import FastAPI, HTTPException, Path, Body, Depends, Query
+from fastapi import FastAPI, HTTPException, Path, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, List
 from pydantic import BaseModel
+from typing import Dict, List
 import sqlite3
 
 app = FastAPI()
@@ -21,7 +21,6 @@ def get_conn():
 @app.on_event("startup")
 def init_db():
     with get_conn() as conn:
-        # Tabela de empresas
         conn.execute("""
             CREATE TABLE IF NOT EXISTS empresas (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,7 +33,6 @@ def init_db():
                 schema TEXT
             )
         """)
-        # Tabela de usuários
         conn.execute("""
             CREATE TABLE IF NOT EXISTS usuarios (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,13 +56,7 @@ class ConexaoInput(BaseModel):
     email: str
     senha: str
 
-class EmpresaCadastroInput(BaseModel):
-    nome_empresa: str
-    nome_usuario: str
-    email: str
-    senha: str
-
-def get_current_user(email: str = Body(...), senha: str = Body(...)):
+def get_current_user(email: str, senha: str):
     with get_conn() as conn:
         c = conn.cursor()
         c.execute(
@@ -81,39 +73,67 @@ def get_current_user(email: str = Body(...), senha: str = Body(...)):
             "empresa_id": row[3]
         }
 
-@app.post("/empresas/cadastro_completo")
-def cadastrar_empresa(input: EmpresaCadastroInput):
+@app.put("/empresas/{empresa_id}/conexao")
+def atualizar_conexao(
+    empresa_id: int,
+    conexao: ConexaoInput,  # ATENÇÃO: Só o tipo, SEM Body()
+):
+    # Autentica usuário (pelo email/senha do payload)
+    user = get_current_user(conexao.email, conexao.senha)
+    # Só admin geral ou admin_cliente da empresa podem alterar
+    if user["perfil"] not in ["admin_geral", "admin_cliente"] or user["empresa_id"] != empresa_id:
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+    # Atualiza conexão
     with get_conn() as conn:
-        # Cria empresa
-        c = conn.cursor()
-        c.execute("INSERT INTO empresas (nome) VALUES (?)", (input.nome_empresa,))
-        empresa_id = c.lastrowid
-        # Cria usuário admin_cliente
-        try:
-            c.execute("""
-                INSERT INTO usuarios (nome, email, senha, perfil, empresa_id)
-                VALUES (?, ?, ?, ?, ?)
-            """, (input.nome_usuario, input.email, input.senha, "admin_cliente", empresa_id))
-            conn.commit()
-            return {"ok": True, "empresa_id": empresa_id}
-        except sqlite3.IntegrityError:
-            raise HTTPException(status_code=400, detail="Email já cadastrado.")
+        conn.execute("""
+            UPDATE empresas SET
+                tipo_banco = ?,
+                host = ?,
+                porta = ?,
+                usuario_banco = ?,
+                senha_banco = ?,
+                schema = ?
+            WHERE id = ?
+        """, (
+            conexao.tipo_banco, conexao.host, conexao.porta,
+            conexao.usuario_banco, conexao.senha_banco, conexao.schema,
+            empresa_id
+        ))
+        conn.commit()
+    return {"ok": True}
 
-@app.post("/usuarios/admin_geral")
-def criar_admin_geral(nome: str = Body(...), email: str = Body(...), senha: str = Body(...)):
+# --- DEMAIS ENDPOINTS EXEMPLO ABAIXO ---
+
+@app.post("/empresas")
+def cadastrar_empresa(nome: str = Query(...)):
+    with get_conn() as conn:
+        c = conn.cursor()
+        c.execute("INSERT INTO empresas (nome) VALUES (?)", (nome,))
+        empresa_id = c.lastrowid
+        conn.commit()
+        return {"ok": True, "empresa_id": empresa_id}
+
+@app.post("/usuarios")
+def cadastrar_usuario(
+    nome: str = Query(...),
+    email: str = Query(...),
+    senha: str = Query(...),
+    perfil: str = Query(...),
+    empresa_id: int = Query(...)
+):
     with get_conn() as conn:
         try:
             conn.execute("""
-                INSERT INTO usuarios (nome, email, senha, perfil)
-                VALUES (?, ?, ?, 'admin_geral')
-            """, (nome, email, senha))
+                INSERT INTO usuarios (nome, email, senha, perfil, empresa_id)
+                VALUES (?, ?, ?, ?, ?)
+            """, (nome, email, senha, perfil, empresa_id))
             conn.commit()
             return {"ok": True}
         except sqlite3.IntegrityError:
             raise HTTPException(status_code=400, detail="Email já cadastrado.")
 
 @app.post("/login")
-def login(email: str = Body(...), senha: str = Body(...)):
+def login(email: str = Query(...), senha: str = Query(...)):
     with get_conn() as conn:
         c = conn.cursor()
         c.execute(
@@ -133,31 +153,8 @@ def login(email: str = Body(...), senha: str = Body(...)):
         else:
             raise HTTPException(status_code=401, detail="Credenciais inválidas.")
 
-@app.post("/usuarios")
-def cadastrar_usuario(
-    nome: str = Body(...),
-    email: str = Body(...),
-    senha: str = Body(...),
-    perfil: str = Body(...),
-    empresa_id: int = Body(...)
-):
-    with get_conn() as conn:
-        try:
-            conn.execute("""
-                INSERT INTO usuarios (nome, email, senha, perfil, empresa_id)
-                VALUES (?, ?, ?, ?, ?)
-            """, (nome, email, senha, perfil, empresa_id))
-            conn.commit()
-            return {"ok": True}
-        except sqlite3.IntegrityError:
-            raise HTTPException(status_code=400, detail="Email já cadastrado.")
-
 @app.get("/empresas/{empresa_id}")
-def dados_empresa(
-    empresa_id: int = Path(...),
-    email: str = Query(...),
-    senha: str = Query(...)
-):
+def dados_empresa(empresa_id: int, email: str = Query(...), senha: str = Query(...)):
     user = get_current_user(email=email, senha=senha)
     if user["perfil"] != "admin_geral" and user["empresa_id"] != empresa_id:
         raise HTTPException(status_code=403, detail="Acesso negado.")
@@ -178,99 +175,3 @@ def dados_empresa(
             "senha_banco": row[6],
             "schema": row[7]
         }
-
-# --- ENDPOINT COM embed=False ---
-@app.put("/empresas/{empresa_id}/conexao")
-def atualizar_conexao(
-    empresa_id: int,
-    conexao: ConexaoInput,  # SÓ O TIPO!
-    user: dict = Depends(get_current_user)
-):
-    # Só para debug:
-    print("CONECAO RECEBIDA:", conexao)
-    ...
-
-    ...
-    ...
-    if user["perfil"] != "admin_geral" and user["empresa_id"] != empresa_id:
-        raise HTTPException(status_code=403, detail="Acesso negado.")
-    with get_conn() as conn:
-        conn.execute("""
-            UPDATE empresas SET
-                tipo_banco = ?,
-                host = ?,
-                porta = ?,
-                usuario_banco = ?,
-                senha_banco = ?,
-                schema = ?
-            WHERE id = ?
-        """, (
-            conexao.tipo_banco, conexao.host, conexao.porta,
-            conexao.usuario_banco, conexao.senha_banco, conexao.schema,
-            empresa_id
-        ))
-        conn.commit()
-    return {"ok": True}
-
-@app.get("/indicadores")
-def indicadores(setor: str = Query(...)):
-    if setor.lower() == "financeiro":
-        return {
-            "Receitas do mês": 100000,
-            "Despesas do mês": 50000,
-            "Saldo em Caixa": 50000
-        }
-    elif setor.lower() == "comercial":
-        return {
-            "Pedidos fechados": 120,
-            "Clientes novos": 15,
-            "Ticket médio": 800
-        }
-    elif setor.lower() == "producao":
-        return {
-            "Peças produzidas": 6000,
-            "Horas trabalhadas": 900,
-            "Modelos diferentes": 25
-        }
-    else:
-        return {}
-
-@app.get("/admin/empresas")
-def listar_empresas(
-    email: str = Query(...),
-    senha: str = Query(...)
-):
-    user = get_current_user(email=email, senha=senha)
-    if user["perfil"] != "admin_geral":
-        raise HTTPException(status_code=403, detail="Acesso negado.")
-    with get_conn() as conn:
-        rows = conn.execute("""
-            SELECT id, nome, tipo_banco, host, porta, usuario_banco, schema FROM empresas
-        """).fetchall()
-        return [
-            {
-                "id": r[0], "nome": r[1], "tipo_banco": r[2], "host": r[3],
-                "porta": r[4], "usuario_banco": r[5], "schema": r[6]
-            }
-            for r in rows
-        ]
-
-@app.get("/admin/usuarios")
-def listar_usuarios(
-    email: str = Query(...),
-    senha: str = Query(...)
-):
-    user = get_current_user(email=email, senha=senha)
-    if user["perfil"] != "admin_geral":
-        raise HTTPException(status_code=403, detail="Acesso negado.")
-    with get_conn() as conn:
-        rows = conn.execute("""
-            SELECT id, nome, email, perfil, empresa_id FROM usuarios
-        """).fetchall()
-        return [
-            {
-                "id": r[0], "nome": r[1], "email": r[2],
-                "perfil": r[3], "empresa_id": r[4]
-            }
-            for r in rows
-        ]
