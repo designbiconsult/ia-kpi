@@ -183,9 +183,10 @@ def dados_empresa(
 @app.put("/empresas/{empresa_id}/conexao")
 def atualizar_conexao(
     empresa_id: int,
-    conexao: ConexaoInput = Body(..., embed=False),
+    conexao: ConexaoInput = Body(..., embed=True),  # embed=True é default, pode tirar
     user: dict = Depends(get_current_user)
 ):
+    ...
     if user["perfil"] != "admin_geral" and user["empresa_id"] != empresa_id:
         raise HTTPException(status_code=403, detail="Acesso negado.")
     with get_conn() as conn:
