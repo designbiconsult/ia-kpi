@@ -1,7 +1,7 @@
-from fastapi import FastAPI, HTTPException, Path, Depends, Query
+from fastapi import FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Dict, List
+from typing import Dict
 import sqlite3
 
 app = FastAPI()
@@ -39,7 +39,7 @@ def init_db():
                 nome TEXT NOT NULL,
                 email TEXT UNIQUE NOT NULL,
                 senha TEXT NOT NULL,
-                perfil TEXT NOT NULL, -- admin_geral, admin_cliente, user
+                perfil TEXT NOT NULL,
                 empresa_id INTEGER,
                 FOREIGN KEY(empresa_id) REFERENCES empresas(id)
             )
@@ -76,14 +76,11 @@ def get_current_user(email: str, senha: str):
 @app.put("/empresas/{empresa_id}/conexao")
 def atualizar_conexao(
     empresa_id: int,
-    conexao: ConexaoInput,  # ATENÇÃO: Só o tipo, SEM Body()
+    conexao: ConexaoInput,  # <-- Aqui está o truque: só o tipo!
 ):
-    # Autentica usuário (pelo email/senha do payload)
     user = get_current_user(conexao.email, conexao.senha)
-    # Só admin geral ou admin_cliente da empresa podem alterar
     if user["perfil"] not in ["admin_geral", "admin_cliente"] or user["empresa_id"] != empresa_id:
         raise HTTPException(status_code=403, detail="Acesso negado.")
-    # Atualiza conexão
     with get_conn() as conn:
         conn.execute("""
             UPDATE empresas SET
@@ -101,8 +98,6 @@ def atualizar_conexao(
         ))
         conn.commit()
     return {"ok": True}
-
-# --- DEMAIS ENDPOINTS EXEMPLO ABAIXO ---
 
 @app.post("/empresas")
 def cadastrar_empresa(nome: str = Query(...)):
