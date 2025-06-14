@@ -18,7 +18,10 @@ export default function Login({ onLogin }) {
     setMsg("");
     setLoading(true);
     try {
-      const { data } = await axios.post("http://localhost:8000/login", form);
+      // Enviando como query string, como esperado pelo backend
+      const { data } = await axios.post("http://localhost:8000/login", null, {
+        params: { email: form.email, senha: form.senha }
+      });
       onLogin(data); // O objeto data é o usuário logado
       navigate("/dashboard");
     } catch (err) {
