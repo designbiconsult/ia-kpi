@@ -5,6 +5,8 @@ import CadastroEmpresa from "./CadastroEmpresa";
 import Dashboard from "./Dashboard";
 import AdminDashboard from "./AdminDashboard";
 import ConfigConexao from "./ConfigConexao";
+import SincronizarTabelas from "./SincronizarTabelas";
+
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -34,6 +36,15 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route
+  path="/sincronizar"
+  element={
+    <PrivateRoute>
+      <SincronizarTabelas user={user} onLogout={handleLogout} />
+    </PrivateRoute>
+  }
+/>
+
         <Route
           path="/"
           element={user ? <Navigate to="/dashboard" /> : <Navigate to="/login" />}
