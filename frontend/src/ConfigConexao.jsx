@@ -23,10 +23,11 @@ export default function ConfigConexao({ user }) {
   useEffect(() => {
     async function fetchConexao() {
       try {
+        // Passe email e senha como params!
         const { data } = await axios.get(
           `http://localhost:8000/empresas/${user.empresa_id}`,
           {
-            data: { email: user.email, senha: user.senha }
+            params: { email: user.email, senha: user.senha }
           }
         );
         setForm({
@@ -37,6 +38,7 @@ export default function ConfigConexao({ user }) {
           senha_banco: data.senha_banco || "",
           schema: data.schema || ""
         });
+        setMsg(""); // Limpa msg de erro
       } catch (err) {
         setMsg("Não foi possível carregar a conexão.");
       } finally {
@@ -54,13 +56,14 @@ export default function ConfigConexao({ user }) {
     setMsg(""); setOk(false);
     try {
       const payload = { ...form, email: user.email, senha: user.senha };
-console.log("Payload enviado:", payload);
-await axios.put(
-  `http://localhost:8000/empresas/${user.empresa_id}/conexao`,
-  payload
-);
+      await axios.put(
+        `http://localhost:8000/empresas/${user.empresa_id}/conexao`,
+        payload
+      );
       setOk(true);
       setMsg("");
+      // Redireciona automaticamente após 1s
+      setTimeout(() => navigate("/dashboard"), 1000);
     } catch (err) {
       let erroApi = err.response?.data?.detail || err.response?.data || "Erro ao salvar conexão.";
       if (Array.isArray(erroApi)) {
@@ -114,15 +117,12 @@ await axios.put(
               <TextField label="Host" name="host" value={form.host} onChange={handleChange} required />
               <TextField label="Porta" name="porta" value={form.porta} onChange={handleChange} required />
               <TextField label="Usuário do Banco" name="usuario_banco" value={form.usuario_banco} onChange={handleChange} required />
-              <TextField label="Senha do Banco" name="senha_banco" type="password" value={form.senha_banco} onChange={handleChange} required />
+              <TextField label="Senha do Banco" type="password" name="senha_banco" value={form.senha_banco} onChange={handleChange} required />
               <TextField label="Schema/Banco" name="schema" value={form.schema} onChange={handleChange} required />
               {msg && <Alert severity="error">{msg}</Alert>}
-              {ok && <Alert severity="success">Conexão salva com sucesso!</Alert>}
+              {ok && <Alert severity="success">Conexão salva com sucesso! Redirecionando...</Alert>}
               <Button variant="contained" color="primary" type="submit" sx={{ fontWeight: 700, background: "#0B2132", '&:hover': { background: "#06597a" } }} fullWidth>
                 Salvar Conexão
-              </Button>
-              <Button onClick={() => navigate("/dashboard")} variant="text" color="secondary" fullWidth>
-                Voltar ao Dashboard
               </Button>
             </Stack>
           </form>
