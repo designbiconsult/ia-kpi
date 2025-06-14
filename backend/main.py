@@ -148,6 +148,7 @@ def login(email: str = Query(...), senha: str = Query(...)):
         else:
             raise HTTPException(status_code=401, detail="Credenciais inválidas.")
 
+
 @app.get("/empresas/{empresa_id}")
 def dados_empresa(empresa_id: int, email: str = Query(...), senha: str = Query(...)):
     user = get_current_user(email=email, senha=senha)
