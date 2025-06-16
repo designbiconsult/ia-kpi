@@ -6,6 +6,10 @@ import Dashboard from "./Dashboard";
 import AdminDashboard from "./AdminDashboard";
 import ConfigConexao from "./ConfigConexao";
 import SincronizarTabelas from "./SincronizarTabelas";
+import Relacionamentos from "./Relacionamentos";
+
+
+
 
 
 export default function App() {
@@ -41,6 +45,15 @@ export default function App() {
   element={
     <PrivateRoute>
       <SincronizarTabelas user={user} onLogout={handleLogout} />
+    </PrivateRoute>
+  }
+/>
+
+        <Route
+          path="/relacionamentos"
+          element={
+      <PrivateRoute>
+        <Relacionamentos user={user} />
     </PrivateRoute>
   }
 />
