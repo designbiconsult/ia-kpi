@@ -10,6 +10,7 @@ import Relacionamentos from "./Relacionamentos";
 import Sidebar from "./Sidebar";
 import MenuIcon from '@mui/icons-material/Menu';
 import { IconButton, Toolbar, AppBar, Box, Typography, Button } from "@mui/material";
+import RelacionamentosVisual from "./RelacionamentosVisual";
 
 const drawerWidth = 230;
 
@@ -149,6 +150,14 @@ export default function App() {
                   <ConfigConexao user={user} />
                 </PrivateRoute>
               }
+            />
+            <Route
+              path="/relacionamentos-visual"
+              element={
+                <PrivateRoute>
+                  <RelacionamentosVisual user={user} />
+                </PrivateRoute>
+               }
             />
             <Route
               path="*"

@@ -9,6 +9,8 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import MenuIcon from '@mui/icons-material/Menu';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import { useNavigate } from "react-router-dom";
+import TableChartIcon from '@mui/icons-material/TableChart';
+
 
 const drawerWidth = 230;
 
@@ -21,6 +23,8 @@ export default function Sidebar({ open, setOpen }) {
     { label: "Configuração de Conexão", icon: <SettingsIcon />, path: "/conexao" },
     { label: "Sincronismo de Tabelas", icon: <SyncAltIcon />, path: "/sincronizar" },
     { label: "Relacionamentos", icon: <DeviceHubIcon />, path: "/relacionamentos" },
+    { label: "Relacionamentos Visual", icon: <TableChartIcon />, path: "/relacionamentos-visual" },
+
     // { label: "Visual Relacionamentos", icon: <TableChartIcon />, path: "/relacionamentos-visual" }, // Extra opcional
   ];
 
