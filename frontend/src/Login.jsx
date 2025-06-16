@@ -18,11 +18,12 @@ export default function Login({ onLogin }) {
     setMsg("");
     setLoading(true);
     try {
-      // Enviando como query string, como esperado pelo backend
-      const { data } = await axios.post("http://localhost:8000/login", null, {
-        params: { email: form.email, senha: form.senha }
+      // ENVIE O LOGIN NO BODY COMO JSON!
+      const { data } = await axios.post("http://localhost:8000/login", {
+        email: form.email,
+        senha: form.senha
       });
-      onLogin(data); // O objeto data é o usuário logado
+      onLogin(data);
       navigate("/dashboard");
     } catch (err) {
       setMsg("Credenciais inválidas.");
