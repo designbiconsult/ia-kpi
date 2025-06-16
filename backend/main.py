@@ -1,8 +1,9 @@
 from fastapi import FastAPI, HTTPException, Query, Path, Body
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
-from typing import Dict
-from fastapi import Body
+from typing import Dict, List
+import pymysql
+import pandas as pd
 
 app = FastAPI()
 app.add_middleware(
@@ -53,6 +54,19 @@ def init_db():
                 UNIQUE(empresa_id, nome_tabela)
             )
         """)
+        # Tabela de relacionamentos
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS relacionamentos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                empresa_id INTEGER,
+                tabela_origem TEXT,
+                coluna_origem TEXT,
+                tabela_destino TEXT,
+                coluna_destino TEXT,
+                tipo_relacionamento TEXT, -- Ex: '1-1', '1-N', 'N-N'
+                UNIQUE(empresa_id, tabela_origem, coluna_origem, tabela_destino, coluna_destino)
+            )
+        """)
         conn.commit()
 
 def get_current_user(email: str, senha: str):
@@ -100,7 +114,7 @@ def cadastrar_empresa(dados: dict = Body(...)):
             )
         )
         empresa_id = cur.lastrowid
-        # Cria usuário admin (ajuste: perfil 'admin_geral' para padronizar)
+        # Cria usuário admin (perfil 'admin_geral')
         cur.execute(
             """INSERT INTO usuarios (nome, email, senha, perfil, empresa_id)
                VALUES (?, ?, ?, 'admin_geral', ?)""",
@@ -163,72 +177,8 @@ def atualizar_conexao(
         ))
         conn.commit()
     return {"ok": True}
-# ENDPOINT PARA LISTAR NOVAS TABELAS
-@app.post("/sincronismo/sincronizar-novas")
-def sincronizar_novas(
-    body: dict = Body(...)
-):
-    empresa_id = body.get("empresa_id")
-    tabelas = body.get("tabelas", [])
-    email = body.get("email")
-    senha = body.get("senha")
-
-    user = get_current_user(email=email, senha=senha)
-    if user["perfil"] != "admin_geral" and user["empresa_id"] != empresa_id:
-        raise HTTPException(status_code=403, detail="Acesso negado.")
-
-    # Pega os dados de conexão da empresa
-    with get_conn() as conn:
-        empresa = conn.execute(
-            "SELECT tipo_banco, host, porta, usuario_banco, senha_banco, schema FROM empresas WHERE id=?",
-            (empresa_id,)
-        ).fetchone()
-        if not empresa:
-            raise HTTPException(status_code=404, detail="Empresa não encontrada.")
-        tipo_banco, host, porta, usuario_banco, senha_banco, schema = empresa
-
-    if tipo_banco != "mysql":
-        raise HTTPException(status_code=400, detail="Sincronização suportada apenas para MySQL.")
-
-    # Sincronizar cada tabela
-    import pymysql
-    import pandas as pd
-    import sqlite3
-
-    try:
-        conn_mysql = pymysql.connect(
-            host=host, port=int(porta), user=usuario_banco, password=senha_banco,
-            database=schema, charset='utf8mb4'
-        )
-        tabelas_sincronizadas = []
-        for tabela in tabelas:
-            # Lê dados do MySQL
-            df = pd.read_sql(f"SELECT * FROM `{tabela}`", conn_mysql)
-            # Escreve no SQLite local
-            with sqlite3.connect(DB_PATH) as conn_sqlite:
-                df.to_sql(tabela, conn_sqlite, if_exists='replace', index=False)
-            tabelas_sincronizadas.append(tabela)
-        conn_mysql.close()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao sincronizar: {str(e)}")
-
-    # Registra sincronização (atualiza tabelas_sincronizadas)
-    with get_conn() as conn:
-        for tabela in tabelas_sincronizadas:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO tabelas_sincronizadas (empresa_id, nome_tabela, ultima_sincronizacao)
-                VALUES (?, ?, CURRENT_TIMESTAMP)
-                """,
-                (empresa_id, tabela)
-            )
-        conn.commit()
-
-    return {"ok": True, "sincronizadas": tabelas_sincronizadas}
 
 # --- ENDPOINT DE LISTA DE TABELAS PARA SINCRONISMO ---
-import pymysql
-
 @app.get("/sincronismo/tabelas")
 def listar_tabelas_sincronismo(
     empresa_id: int = Query(...),
@@ -275,3 +225,124 @@ def listar_tabelas_sincronismo(
         "sincronizadas": sincronizadas,
         "novas": novas_tabelas
     }
+
+# --- SINCRONIZAR NOVAS TABELAS ---
+@app.post("/sincronismo/sincronizar-novas")
+def sincronizar_novas(
+    body: dict = Body(...)
+):
+    empresa_id = body.get("empresa_id")
+    tabelas = body.get("tabelas", [])
+    email = body.get("email")
+    senha = body.get("senha")
+
+    user = get_current_user(email=email, senha=senha)
+    if user["perfil"] != "admin_geral" and user["empresa_id"] != empresa_id:
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+
+    with get_conn() as conn:
+        empresa = conn.execute(
+            "SELECT tipo_banco, host, porta, usuario_banco, senha_banco, schema FROM empresas WHERE id=?",
+            (empresa_id,)
+        ).fetchone()
+        if not empresa:
+            raise HTTPException(status_code=404, detail="Empresa não encontrada.")
+        tipo_banco, host, porta, usuario_banco, senha_banco, schema = empresa
+
+    if tipo_banco != "mysql":
+        raise HTTPException(status_code=400, detail="Sincronização suportada apenas para MySQL.")
+
+    try:
+        conn_mysql = pymysql.connect(
+            host=host, port=int(porta), user=usuario_banco, password=senha_banco,
+            database=schema, charset='utf8mb4'
+        )
+        tabelas_sincronizadas = []
+        for tabela in tabelas:
+            df = pd.read_sql(f"SELECT * FROM `{tabela}`", conn_mysql)
+            with sqlite3.connect(DB_PATH) as conn_sqlite:
+                df.to_sql(tabela, conn_sqlite, if_exists='replace', index=False)
+            tabelas_sincronizadas.append(tabela)
+        conn_mysql.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao sincronizar: {str(e)}")
+
+    with get_conn() as conn:
+        for tabela in tabelas_sincronizadas:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO tabelas_sincronizadas (empresa_id, nome_tabela, ultima_sincronizacao)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                """,
+                (empresa_id, tabela)
+            )
+        conn.commit()
+
+    return {"ok": True, "sincronizadas": tabelas_sincronizadas}
+
+# ===============================
+# === ENDPOINTS DE RELACIONAMENTOS ===
+# ===============================
+
+@app.get("/relacionamentos")
+def listar_relacionamentos(empresa_id: int = Query(...), email: str = Query(...), senha: str = Query(...)):
+    user = get_current_user(email=email, senha=senha)
+    if user["empresa_id"] != empresa_id and user["perfil"] != "admin_geral":
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, tabela_origem, coluna_origem, tabela_destino, coluna_destino, tipo_relacionamento "
+            "FROM relacionamentos WHERE empresa_id=?", (empresa_id,)
+        ).fetchall()
+    return [
+        {
+            "id": r[0], "tabela_origem": r[1], "coluna_origem": r[2],
+            "tabela_destino": r[3], "coluna_destino": r[4],
+            "tipo_relacionamento": r[5]
+        } for r in rows
+    ]
+
+@app.post("/relacionamentos")
+def adicionar_relacionamento(body: dict = Body(...)):
+    empresa_id = body.get("empresa_id")
+    tabela_origem = body.get("tabela_origem")
+    coluna_origem = body.get("coluna_origem")
+    tabela_destino = body.get("tabela_destino")
+    coluna_destino = body.get("coluna_destino")
+    tipo_relacionamento = body.get("tipo_relacionamento")
+    email = body.get("email")
+    senha = body.get("senha")
+    user = get_current_user(email=email, senha=senha)
+    if user["empresa_id"] != empresa_id and user["perfil"] != "admin_geral":
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO relacionamentos "
+            "(empresa_id, tabela_origem, coluna_origem, tabela_destino, coluna_destino, tipo_relacionamento) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (empresa_id, tabela_origem, coluna_origem, tabela_destino, coluna_destino, tipo_relacionamento)
+        )
+        conn.commit()
+    return {"ok": True}
+
+@app.delete("/relacionamentos/{relacionamento_id}")
+def excluir_relacionamento(relacionamento_id: int, email: str = Query(...), senha: str = Query(...)):
+    user = get_current_user(email=email, senha=senha)
+    with get_conn() as conn:
+        conn.execute("DELETE FROM relacionamentos WHERE id=?", (relacionamento_id,))
+        conn.commit()
+    return {"ok": True}
+
+# Utilidade: retornar colunas de uma tabela do SQLite
+@app.get("/tabelas/colunas")
+def listar_colunas(tabela: str = Query(...)):
+    with get_conn() as conn:
+        cols = conn.execute(f"PRAGMA table_info({tabela})").fetchall()
+    return [c[1] for c in cols]
+
+# Utilidade: listar tabelas sincronizadas para seleção de relacionamento
+@app.get("/tabelas/listar")
+def listar_tabelas_sync(empresa_id: int = Query(...)):
+    with get_conn() as conn:
+        rows = conn.execute("SELECT nome_tabela FROM tabelas_sincronizadas WHERE empresa_id=?", (empresa_id,))
+    return [r[0] for r in rows]
