@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Query, Path, Body
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 from typing import Dict
+from fastapi import Body
 
 app = FastAPI()
 app.add_middleware(
@@ -162,6 +163,68 @@ def atualizar_conexao(
         ))
         conn.commit()
     return {"ok": True}
+# ENDPOINT PARA LISTAR NOVAS TABELAS
+@app.post("/sincronismo/sincronizar-novas")
+def sincronizar_novas(
+    body: dict = Body(...)
+):
+    empresa_id = body.get("empresa_id")
+    tabelas = body.get("tabelas", [])
+    email = body.get("email")
+    senha = body.get("senha")
+
+    user = get_current_user(email=email, senha=senha)
+    if user["perfil"] != "admin_geral" and user["empresa_id"] != empresa_id:
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+
+    # Pega os dados de conexão da empresa
+    with get_conn() as conn:
+        empresa = conn.execute(
+            "SELECT tipo_banco, host, porta, usuario_banco, senha_banco, schema FROM empresas WHERE id=?",
+            (empresa_id,)
+        ).fetchone()
+        if not empresa:
+            raise HTTPException(status_code=404, detail="Empresa não encontrada.")
+        tipo_banco, host, porta, usuario_banco, senha_banco, schema = empresa
+
+    if tipo_banco != "mysql":
+        raise HTTPException(status_code=400, detail="Sincronização suportada apenas para MySQL.")
+
+    # Sincronizar cada tabela
+    import pymysql
+    import pandas as pd
+    import sqlite3
+
+    try:
+        conn_mysql = pymysql.connect(
+            host=host, port=int(porta), user=usuario_banco, password=senha_banco,
+            database=schema, charset='utf8mb4'
+        )
+        tabelas_sincronizadas = []
+        for tabela in tabelas:
+            # Lê dados do MySQL
+            df = pd.read_sql(f"SELECT * FROM `{tabela}`", conn_mysql)
+            # Escreve no SQLite local
+            with sqlite3.connect(DB_PATH) as conn_sqlite:
+                df.to_sql(tabela, conn_sqlite, if_exists='replace', index=False)
+            tabelas_sincronizadas.append(tabela)
+        conn_mysql.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao sincronizar: {str(e)}")
+
+    # Registra sincronização (atualiza tabelas_sincronizadas)
+    with get_conn() as conn:
+        for tabela in tabelas_sincronizadas:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO tabelas_sincronizadas (empresa_id, nome_tabela, ultima_sincronizacao)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                """,
+                (empresa_id, tabela)
+            )
+        conn.commit()
+
+    return {"ok": True, "sincronizadas": tabelas_sincronizadas}
 
 # --- ENDPOINT DE LISTA DE TABELAS PARA SINCRONISMO ---
 import pymysql
