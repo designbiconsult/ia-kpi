@@ -23,7 +23,6 @@ export default function ConfigConexao({ user }) {
   useEffect(() => {
     async function fetchConexao() {
       try {
-        // Passe email e senha como params!
         const { data } = await axios.get(
           `http://localhost:8000/empresas/${user.empresa_id}`,
           {
@@ -33,12 +32,12 @@ export default function ConfigConexao({ user }) {
         setForm({
           tipo_banco: data.tipo_banco || "",
           host: data.host || "",
-          porta: data.porta || "",
+          porta: data.porta ? String(data.porta) : "",
           usuario_banco: data.usuario_banco || "",
           senha_banco: data.senha_banco || "",
           schema: data.schema || ""
         });
-        setMsg(""); // Limpa msg de erro
+        setMsg("");
       } catch (err) {
         setMsg("Não foi possível carregar a conexão.");
       } finally {
@@ -53,16 +52,27 @@ export default function ConfigConexao({ user }) {
 
   const handleSubmit = async e => {
     e.preventDefault();
-    setMsg(""); setOk(false);
+    setMsg("");
+    setOk(false);
     try {
-      const payload = { ...form, email: user.email, senha: user.senha };
+      // Monta o payload exatamente como o backend espera!
+      const payload = {
+        tipo_banco: form.tipo_banco,
+        host: form.host,
+        porta: Number(form.porta),  // Porta como número!
+        usuario_banco: form.usuario_banco,
+        senha_banco: form.senha_banco,
+        schema: form.schema
+      };
       await axios.put(
         `http://localhost:8000/empresas/${user.empresa_id}/conexao`,
-        payload
+        payload,
+        {
+          params: { email: user.email, senha: user.senha }
+        }
       );
       setOk(true);
       setMsg("");
-      // Redireciona automaticamente após 1s
       setTimeout(() => navigate("/dashboard"), 1000);
     } catch (err) {
       let erroApi = err.response?.data?.detail || err.response?.data || "Erro ao salvar conexão.";
