@@ -44,13 +44,18 @@ export default function SincronizarTabelas({ user, onLogout }) {
 
   // Marcar/desmarcar item individual
   const toggleSelSync = tabela =>
-    setSelSync(selSync.includes(tabela)
-      ? selSync.filter(t => t !== tabela)
-      : [...selSync, tabela]);
+  setSelSync(prev =>
+    prev.includes(tabela)
+      ? prev.filter(t => t !== tabela)
+      : [...prev, tabela]
+  );
+
   const toggleSelNovas = tabela =>
-    setSelNovas(selNovas.includes(tabela)
-      ? selNovas.filter(t => t !== tabela)
-      : [...selNovas, tabela]);
+    setSelNovas(prev =>
+      prev.includes(tabela)
+        ? prev.filter(t => t !== tabela)
+        : [...prev, tabela]
+    );
 
   // Sincronizar/atualizar
   const atualizar = () => {
