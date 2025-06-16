@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -8,8 +8,7 @@ import ReactFlow, {
   useEdgesState,
   Handle,
   Position,
-  NodeResizer,
-  useReactFlow
+  NodeResizer
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { api } from "./api";
@@ -81,7 +80,7 @@ export default function RelacionamentosVisual({ user }) {
   const [msg, setMsg] = useState({ open: false, text: "", severity: "success" });
   const [loading, setLoading] = useState(true);
 
-  const { fitView } = useReactFlow();
+  const reactFlowRef = useRef(null);
 
   // Carrega tabelas e relacionamentos
   useEffect(() => {
@@ -133,7 +132,9 @@ export default function RelacionamentosVisual({ user }) {
         setEdges(initialEdges);
 
         setTimeout(() => {
-          fitView({ padding: 0.13, includeHiddenNodes: true });
+          if (reactFlowRef.current) {
+            reactFlowRef.current.fitView({ padding: 0.13, includeHiddenNodes: true });
+          }
         }, 400);
         setLoading(false);
       })
@@ -190,7 +191,7 @@ export default function RelacionamentosVisual({ user }) {
         setMsg({ open: true, text: "Erro ao criar relacionamento.", severity: "error" });
       }
     },
-    [user, fitView]
+    [user]
   );
 
   // Remover relacionamento (ao clicar na linha)
@@ -233,11 +234,16 @@ export default function RelacionamentosVisual({ user }) {
               fontWeight: 700,
               "&:hover": { bgcolor: "#06597a" }
             }}
-            onClick={() => fitView({ padding: 0.13 })}
+            onClick={() => {
+              if (reactFlowRef.current) {
+                reactFlowRef.current.fitView({ padding: 0.13, includeHiddenNodes: true });
+              }
+            }}
           >
             Auto-ajustar
           </Button>
           <ReactFlow
+            ref={reactFlowRef}
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
