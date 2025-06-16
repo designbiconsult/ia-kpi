@@ -34,9 +34,13 @@ export default function Relacionamentos({ user }) {
   };
 
   useEffect(() => {
+  // Só faz as chamadas se user está definido E empresa_id existe
+  if (user && user.empresa_id) {
     fetchRelacionamentos();
     fetchTabelas();
-  }, [user.empresa_id]);
+  }
+}, [user]);
+
 
   // Carregar colunas ao escolher tabela
   useEffect(() => {
