@@ -9,20 +9,23 @@ import SincronizarTabelas from "./SincronizarTabelas";
 import Relacionamentos from "./Relacionamentos";
 import Sidebar from "./Sidebar";
 import MenuIcon from '@mui/icons-material/Menu';
-import { IconButton, Toolbar, Box } from "@mui/material";
+import { IconButton, Toolbar, AppBar, Box, Typography, Button } from "@mui/material";
+
+const drawerWidth = 230;
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Abre menu lateral automaticamente após login
+  useEffect(() => {
+    if (user) setSidebarOpen(true);
+  }, [user]);
+
   useEffect(() => {
     const stored = localStorage.getItem("user");
     if (stored) setUser(JSON.parse(stored));
   }, []);
-
-  React.useEffect(() => {
-  if (user) setSidebarOpen(true);
-}, [user]);
 
   const handleLogin = (userObj) => {
     setUser(userObj);
@@ -43,18 +46,57 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Box sx={{ display: 'flex' }}>
+      <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: "#f8fafd" }}>
         {user && <Sidebar open={sidebarOpen} setOpen={setSidebarOpen} />}
-        <Box component="main" sx={{ flexGrow: 1, minHeight: '100vh', bgcolor: "#f8fafd" }}>
-          {/* Top bar só mostra o botão de menu se estiver logado */}
+        
+        <Box
+          component="main"
+          sx={{
+            flexGrow: 1,
+            transition: 'margin 0.2s',
+            marginLeft: user && sidebarOpen ? `${drawerWidth}px` : 0,
+            minHeight: '100vh',
+            bgcolor: "#f8fafd"
+          }}
+        >
+          {/* Topbar fixa */}
           {user && (
-            <Toolbar sx={{ bgcolor: "#e6f0fa" }}>
-              <IconButton onClick={() => setSidebarOpen(true)} sx={{ mr: 2 }}>
-                <MenuIcon />
-              </IconButton>
-              {/* Aqui você pode colocar o nome do usuário, logo, etc */}
-            </Toolbar>
+            <AppBar
+              position="fixed"
+              elevation={0}
+              sx={{
+                width: user && sidebarOpen ? `calc(100% - ${drawerWidth}px)` : '100%',
+                ml: user && sidebarOpen ? `${drawerWidth}px` : 0,
+                bgcolor: "#e6f0fa",
+                color: "#0B2132",
+                boxShadow: "none"
+              }}
+            >
+              <Toolbar>
+                {!sidebarOpen && (
+                  <IconButton
+                    color="inherit"
+                    edge="start"
+                    onClick={() => setSidebarOpen(true)}
+                    sx={{ mr: 2 }}
+                  >
+                    <MenuIcon />
+                  </IconButton>
+                )}
+                <Typography variant="h6" sx={{ flexGrow: 1 }}>
+                  IA-KPI
+                </Typography>
+                <Typography variant="body1" sx={{ mr: 2 }}>
+                  {user?.nome}
+                </Typography>
+                <Button color="inherit" onClick={handleLogout}>Sair</Button>
+              </Toolbar>
+            </AppBar>
           )}
+          {/* Espaço para não cobrir pelo AppBar */}
+          {user && <Toolbar />}
+          
+          {/* Rotas */}
           <Routes>
             <Route
               path="/sincronizar"
