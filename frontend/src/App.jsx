@@ -100,9 +100,7 @@ export default function App() {
           
           {/* Rotas */}
           <Routes>
-            <Route path="/teste" element={<TestReactFlow />} />
-
-            <Route
+           <Route
               path="/sincronizar"
               element={
                 <PrivateRoute>

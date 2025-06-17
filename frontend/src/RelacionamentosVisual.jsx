@@ -12,22 +12,19 @@ import ReactFlow, {
   ReactFlowProvider
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { api } from "./api";
 import { Alert, Snackbar, Box, Button, CircularProgress } from "@mui/material";
 
-// Componente customizado da tabela
 function TableNode({ data, selected }) {
   return (
     <div
       style={{
         background: "#fff",
         border: "2.5px solid #2284a1",
-        borderRadius: 12,
+        borderRadius: 14,
         minWidth: 120,
-        maxWidth: 440,
-        minHeight: 28,
+        maxWidth: 380,
         boxShadow: "0 2px 16px #2284a128",
-        padding: 4,
+        padding: 10,
         position: "relative",
         height: "100%",
         boxSizing: "border-box",
@@ -38,43 +35,23 @@ function TableNode({ data, selected }) {
         color="#0B2132"
         isVisible={selected}
         minWidth={90}
-        minHeight={28}
+        minHeight={34}
         lineStyle={{ borderWidth: 2 }}
       />
-      <div
-        style={{
-          fontWeight: 700,
-          color: "#0B2132",
-          marginBottom: 4,
-          fontSize: 15,
-          whiteSpace: "nowrap",
-          textOverflow: "ellipsis",
-          overflow: "hidden"
-        }}
-        title={data.label}
-      >
+      <div style={{ fontWeight: 700, color: "#0B2132", marginBottom: 8, fontSize: 18 }}>
         {data.label}
       </div>
-      <div
-        style={{
-          maxHeight: "100%",
-          overflowY: "auto",
-          overflowX: "hidden"
-        }}
-      >
+      <div style={{ maxHeight: 300, overflowY: "auto" }}>
         {data.columns.map((col) => (
           <div
             key={col}
             style={{
-              margin: "2px 0",
-              padding: "2px 6px",
-              borderRadius: 5,
+              margin: "5px 0",
+              padding: "5px 8px",
+              borderRadius: 6,
               background: "#e4f3fa",
-              fontSize: 12,
+              fontSize: 14,
               position: "relative",
-              whiteSpace: "nowrap",
-              textOverflow: "ellipsis",
-              overflow: "hidden",
               cursor: "crosshair"
             }}
             title={col}
@@ -89,12 +66,11 @@ function TableNode({ data, selected }) {
                 left: 0,
                 right: 0,
                 bottom: 0,
-                borderRadius: 5,
-                background: "rgba(0,0,0,0)",
                 width: "100%",
                 height: "100%",
                 zIndex: 2,
-                cursor: "crosshair"
+                cursor: "crosshair",
+                background: "rgba(0,0,0,0)"
               }}
             />
             <Handle
@@ -107,12 +83,11 @@ function TableNode({ data, selected }) {
                 left: 0,
                 right: 0,
                 bottom: 0,
-                borderRadius: 5,
-                background: "rgba(0,0,0,0)",
                 width: "100%",
                 height: "100%",
                 zIndex: 2,
-                cursor: "crosshair"
+                cursor: "crosshair",
+                background: "rgba(0,0,0,0)"
               }}
             />
             {col}
@@ -122,9 +97,9 @@ function TableNode({ data, selected }) {
     </div>
   );
 }
+
 const nodeTypes = { table: TableNode };
 
-// Botão auto-ajustar
 function AutoFitButton() {
   const { fitView, getNodes } = useReactFlow();
   return (
@@ -141,7 +116,7 @@ function AutoFitButton() {
       }}
       onClick={() => {
         const allNodeIds = getNodes().map((n) => n.id);
-        fitView({ nodes: allNodeIds, padding: 0.1, includeHiddenNodes: true });
+        fitView({ nodes: allNodeIds, padding: 0.15, includeHiddenNodes: true });
       }}
     >
       Auto-ajustar
@@ -149,27 +124,31 @@ function AutoFitButton() {
   );
 }
 
-function RelacionamentosVisualContent({ user }) {
+function RelacionamentosVisualContent({ user, api, tabelasDemo, colunasDemo, edgesDemo }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [msg, setMsg] = useState({ open: false, text: "", severity: "success" });
   const [loading, setLoading] = useState(true);
 
   const containerRef = useRef();
-  const [dragBounds, setDragBounds] = useState({ left: 0, top: 0, right: 0, bottom: 0 });
+  const [dragBounds, setDragBounds] = useState({
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0
+  });
 
-  const { fitView, getNodes } = useReactFlow();
+  const { fitView, getNodes, setViewport } = useReactFlow();
 
-  // Atualiza os limites do drag sempre que o tamanho da tela muda
   useEffect(() => {
     function updateBounds() {
       if (containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
         setDragBounds({
-          left: 0,
-          top: 0,
-          right: rect.width,
-          bottom: rect.height,
+          left: 10, // padding igual Power BI
+          top: 10,
+          right: rect.width - 10,
+          bottom: rect.height - 10
         });
       }
     }
@@ -179,127 +158,44 @@ function RelacionamentosVisualContent({ user }) {
   }, []);
 
   useEffect(() => {
-    if (!user || !user.empresa_id) return;
-    setLoading(true);
-    Promise.all([
-      api.get("/tabelas/listar", { params: { empresa_id: user.empresa_id } }),
-      api.get("/relacionamentos", {
-        params: { empresa_id: user.empresa_id, email: user.email, senha: user.senha }
-      })
-    ])
-      .then(async ([tabRes, relRes]) => {
-        const tabelas = tabRes.data || [];
-        const relacionamentos = relRes.data || [];
-        const colunasPorTabela = {};
-        await Promise.all(
-          tabelas.map(async (t) => {
-            const resp = await api.get("/tabelas/colunas", { params: { tabela: t } });
-            colunasPorTabela[t] = resp.data || [];
-          })
-        );
-        const initialNodes = tabelas.map((t, idx) => ({
-          id: t,
-          type: "table",
-          data: { label: t, columns: colunasPorTabela[t] },
-          position: { x: 80 + 200 * (idx % 6), y: 30 + 120 * Math.floor(idx / 6) },
-          style: { minWidth: 120, minHeight: 28 },
-          resizable: true,
-        }));
-        const initialEdges = (relacionamentos || []).map((r) => ({
-          id: `e-${r.id}`,
-          source: r.tabela_origem,
-          sourceHandle: `${r.tabela_origem}.${r.coluna_origem}`,
-          target: r.tabela_destino,
-          targetHandle: `${r.tabela_destino}.${r.coluna_destino}`,
-          animated: true,
-          label: r.tipo_relacionamento,
-          style: { stroke: "#0B2132" },
-          data: { relId: r.id }
-        }));
+    // Use dados demo para simular Power BI
+    if (tabelasDemo && colunasDemo && edgesDemo) {
+      const initialNodes = tabelasDemo.map((t, idx) => ({
+        id: t,
+        type: "table",
+        data: { label: t, columns: colunasDemo[t] || [] },
+        position: { x: 100 + 260 * (idx % 4), y: 60 + 220 * Math.floor(idx / 4) },
+        style: { minWidth: 120, minHeight: 36 },
+        resizable: true
+      }));
+      setNodes(initialNodes);
+      setEdges(edgesDemo);
+      setLoading(false);
+    }
+  }, [tabelasDemo, colunasDemo, edgesDemo]);
 
-        setNodes(initialNodes);
-        setEdges(initialEdges);
-        setLoading(false);
-      })
-      .catch(() => {
-        setMsg({
-          open: true,
-          text: "Erro ao carregar tabelas/relacionamentos.",
-          severity: "error"
-        });
-        setLoading(false);
-      });
-  }, [user]);
-
+  // Auto-fit ao montar
   useEffect(() => {
     if (!loading && nodes.length) {
       setTimeout(() => {
         const allNodeIds = getNodes().map((n) => n.id);
-        fitView({ nodes: allNodeIds, padding: 0.1, includeHiddenNodes: true });
-      }, 120);
+        fitView({ nodes: allNodeIds, padding: 0.13, includeHiddenNodes: true });
+      }, 140);
     }
   }, [loading, nodes, fitView, getNodes]);
 
-  // Conectar relacionamento
-  const onConnect = useCallback(
-    async (params) => {
-      const [tabela_origem, coluna_origem] = params.sourceHandle.split(".");
-      const [tabela_destino, coluna_destino] = params.targetHandle.split(".");
-      try {
-        await api.post("/relacionamentos", {
-          tabela_origem,
-          coluna_origem,
-          tabela_destino,
-          coluna_destino,
-          tipo_relacionamento: "1-N",
-          empresa_id: user.empresa_id,
-          email: user.email,
-          senha: user.senha
-        });
-        setMsg({ open: true, text: "Relacionamento criado!", severity: "success" });
-        setLoading(true);
-        const relRes = await api.get("/relacionamentos", {
-          params: { empresa_id: user.empresa_id, email: user.email, senha: user.senha }
-        });
-        const relacionamentos = relRes.data || [];
-        const newEdges = relacionamentos.map((r) => ({
-          id: `e-${r.id}`,
-          source: r.tabela_origem,
-          sourceHandle: `${r.tabela_origem}.${r.coluna_origem}`,
-          target: r.tabela_destino,
-          targetHandle: `${r.tabela_destino}.${r.coluna_destino}`,
-          animated: true,
-          label: r.tipo_relacionamento,
-          style: { stroke: "#0B2132" },
-          data: { relId: r.id }
-        }));
-        setEdges(newEdges);
-        setLoading(false);
-      } catch {
-        setMsg({ open: true, text: "Erro ao criar relacionamento.", severity: "error" });
-      }
-    },
-    [user]
-  );
-
-  // Remover relacionamento ao clicar na linha
-  const onEdgeClick = useCallback(
-    (event, edge) => {
-      event.stopPropagation();
-      if (window.confirm("Remover este relacionamento?")) {
-        api
-          .delete(`/relacionamentos/${edge.data.relId}`, {
-            params: { email: user.email, senha: user.senha }
-          })
-          .then(() => {
-            setMsg({ open: true, text: "Relacionamento removido!", severity: "success" });
-            setEdges((eds) => eds.filter((e) => e.id !== edge.id));
-          })
-          .catch(() => setMsg({ open: true, text: "Erro ao remover relacionamento.", severity: "error" }));
-      }
-    },
-    [user]
-  );
+  // Bloquear pan além do canvas (Power BI style)
+  const onMove = useCallback((e, viewport) => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      let { x, y } = viewport;
+      // Não deixa o canvas "sumir" do quadro visível
+      if (x > 0) x = 0;
+      if (y > 0) y = 0;
+      // Não deixa mover para longe para direita/baixo (poderia calcular pelo tamanho total dos nodes)
+      setViewport({ x, y, zoom: viewport.zoom });
+    }
+  }, [setViewport]);
 
   return (
     <Box
@@ -324,10 +220,8 @@ function RelacionamentosVisualContent({ user }) {
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onEdgeClick={onEdgeClick}
           nodeTypes={nodeTypes}
-          minZoom={0.1}
+          minZoom={0.2}
           maxZoom={2.2}
           panOnDrag
           nodesDraggable
@@ -337,6 +231,7 @@ function RelacionamentosVisualContent({ user }) {
           defaultEdgeOptions={{ type: "smoothstep" }}
           proOptions={{ hideAttribution: true }}
           nodeDragBounds={dragBounds}
+          onMove={onMove}
         >
           <MiniMap nodeColor={() => "#2284a1"} />
           <Controls />
@@ -358,10 +253,48 @@ function RelacionamentosVisualContent({ user }) {
   );
 }
 
-export default function RelacionamentosVisual(props) {
+// Simulação de dados igual ao Power BI
+const tabelasDemo = ["Pedidos", "Clientes", "Produtos", "Notas"];
+const colunasDemo = {
+  Pedidos: ["ID", "Data", "ID_Cliente", "Valor", "Status"],
+  Clientes: ["ID", "Nome", "Cidade", "UF"],
+  Produtos: ["ID", "Nome", "Preço", "Estoque"],
+  Notas: ["ID", "ID_Pedido", "Data", "Total"]
+};
+const edgesDemo = [
+  {
+    id: "e1",
+    source: "Pedidos",
+    sourceHandle: "Pedidos.ID_Cliente",
+    target: "Clientes",
+    targetHandle: "Clientes.ID",
+    label: "1-N",
+    style: { stroke: "#0B2132" },
+    animated: true,
+    data: { relId: 1 }
+  },
+  {
+    id: "e2",
+    source: "Notas",
+    sourceHandle: "Notas.ID_Pedido",
+    target: "Pedidos",
+    targetHandle: "Pedidos.ID",
+    label: "N-1",
+    style: { stroke: "#2284a1" },
+    animated: true,
+    data: { relId: 2 }
+  }
+];
+
+// PRONTO PARA TESTAR, igual ao Power BI:
+export default function RelacionamentosVisual() {
   return (
     <ReactFlowProvider>
-      <RelacionamentosVisualContent {...props} />
+      <RelacionamentosVisualContent
+        tabelasDemo={tabelasDemo}
+        colunasDemo={colunasDemo}
+        edgesDemo={edgesDemo}
+      />
     </ReactFlowProvider>
   );
 }
