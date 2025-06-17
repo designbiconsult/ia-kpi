@@ -11,6 +11,7 @@ import Sidebar from "./Sidebar";
 import MenuIcon from '@mui/icons-material/Menu';
 import { IconButton, Toolbar, AppBar, Box, Typography, Button } from "@mui/material";
 import RelacionamentosVisual from "./RelacionamentosVisual";
+import TestReactFlow from "./TestReactFlow";
 
 const drawerWidth = 230;
 
@@ -99,6 +100,8 @@ export default function App() {
           
           {/* Rotas */}
           <Routes>
+            <Route path="/teste" element={<TestReactFlow />} />
+
             <Route
               path="/sincronizar"
               element={
