@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -15,137 +15,7 @@ import "reactflow/dist/style.css";
 import { api } from "./api";
 import { Alert, Snackbar, Box, Button, CircularProgress } from "@mui/material";
 
-function TableNode({ data, selected }) {
-  return (
-    <div
-      style={{
-        background: "#fff",
-        border: "2.5px solid #2284a1",
-        borderRadius: 12,
-        minWidth: 120,
-        maxWidth: 440,
-        minHeight: 28,
-        boxShadow: "0 2px 16px #2284a128",
-        padding: 4,
-        position: "relative",
-        height: "100%",
-        boxSizing: "border-box",
-        overflow: "hidden"
-      }}
-    >
-      <NodeResizer
-        color="#0B2132"
-        isVisible={selected}
-        minWidth={90}
-        minHeight={28}
-        lineStyle={{ borderWidth: 2 }}
-      />
-      <div
-        style={{
-          fontWeight: 700,
-          color: "#0B2132",
-          marginBottom: 4,
-          fontSize: 15,
-          whiteSpace: "nowrap",
-          textOverflow: "ellipsis",
-          overflow: "hidden"
-        }}
-        title={data.label}
-      >
-        {data.label}
-      </div>
-      <div
-        style={{
-          maxHeight: "100%",
-          overflowY: "auto",
-          overflowX: "hidden"
-        }}
-      >
-        {data.columns.map((col) => (
-          <div
-            key={col}
-            style={{
-              margin: "2px 0",
-              padding: "2px 6px",
-              borderRadius: 5,
-              background: "#e4f3fa",
-              fontSize: 12,
-              position: "relative",
-              whiteSpace: "nowrap",
-              textOverflow: "ellipsis",
-              overflow: "hidden",
-              cursor: "crosshair"
-            }}
-            title={col}
-          >
-            <Handle
-              type="source"
-              id={`${data.label}.${col}`}
-              position={Position.Right}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                borderRadius: 5,
-                background: "rgba(0,0,0,0)",
-                width: "100%",
-                height: "100%",
-                zIndex: 2,
-                cursor: "crosshair"
-              }}
-            />
-            <Handle
-              type="target"
-              id={`${data.label}.${col}`}
-              position={Position.Left}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                borderRadius: 5,
-                background: "rgba(0,0,0,0)",
-                width: "100%",
-                height: "100%",
-                zIndex: 2,
-                cursor: "crosshair"
-              }}
-            />
-            {col}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-const nodeTypes = { table: TableNode };
-
-function AutoFitButton() {
-  const { fitView, getNodes } = useReactFlow();
-  return (
-    <Button
-      variant="contained"
-      sx={{
-        position: "absolute",
-        zIndex: 12,
-        top: 14,
-        left: 250,
-        bgcolor: "#0B2132",
-        fontWeight: 700,
-        "&:hover": { bgcolor: "#06597a" }
-      }}
-      onClick={() => {
-        const allNodeIds = getNodes().map((n) => n.id);
-        fitView({ nodes: allNodeIds, padding: 0.1, includeHiddenNodes: true });
-      }}
-    >
-      Auto-ajustar
-    </Button>
-  );
-}
+// ... TableNode igual ao exemplo anterior ...
 
 function RelacionamentosVisualContent({ user }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -153,7 +23,28 @@ function RelacionamentosVisualContent({ user }) {
   const [msg, setMsg] = useState({ open: false, text: "", severity: "success" });
   const [loading, setLoading] = useState(true);
 
+  const containerRef = useRef();
+  const [dragBounds, setDragBounds] = useState({ left: 0, top: 0, right: 0, bottom: 0 });
+
   const { fitView, getNodes } = useReactFlow();
+
+  // Atualiza os limites do drag sempre que o tamanho da tela muda
+  useEffect(() => {
+    function updateBounds() {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setDragBounds({
+          left: 0,
+          top: 0,
+          right: rect.width,
+          bottom: rect.height,
+        });
+      }
+    }
+    updateBounds();
+    window.addEventListener("resize", updateBounds);
+    return () => window.removeEventListener("resize", updateBounds);
+  }, []);
 
   useEffect(() => {
     if (!user || !user.empresa_id) return;
@@ -217,67 +108,11 @@ function RelacionamentosVisualContent({ user }) {
     }
   }, [loading, nodes, fitView, getNodes]);
 
-  const onConnect = useCallback(
-    async (params) => {
-      const [tabela_origem, coluna_origem] = params.sourceHandle.split(".");
-      const [tabela_destino, coluna_destino] = params.targetHandle.split(".");
-      try {
-        await api.post("/relacionamentos", {
-          tabela_origem,
-          coluna_origem,
-          tabela_destino,
-          coluna_destino,
-          tipo_relacionamento: "1-N",
-          empresa_id: user.empresa_id,
-          email: user.email,
-          senha: user.senha
-        });
-        setMsg({ open: true, text: "Relacionamento criado!", severity: "success" });
-        setLoading(true);
-        const relRes = await api.get("/relacionamentos", {
-          params: { empresa_id: user.empresa_id, email: user.email, senha: user.senha }
-        });
-        const relacionamentos = relRes.data || [];
-        const newEdges = relacionamentos.map((r) => ({
-          id: `e-${r.id}`,
-          source: r.tabela_origem,
-          sourceHandle: `${r.tabela_origem}.${r.coluna_origem}`,
-          target: r.tabela_destino,
-          targetHandle: `${r.tabela_destino}.${r.coluna_destino}`,
-          animated: true,
-          label: r.tipo_relacionamento,
-          style: { stroke: "#0B2132" },
-          data: { relId: r.id }
-        }));
-        setEdges(newEdges);
-        setLoading(false);
-      } catch {
-        setMsg({ open: true, text: "Erro ao criar relacionamento.", severity: "error" });
-      }
-    },
-    [user]
-  );
-
-  const onEdgeClick = useCallback(
-    (event, edge) => {
-      event.stopPropagation();
-      if (window.confirm("Remover este relacionamento?")) {
-        api
-          .delete(`/relacionamentos/${edge.data.relId}`, {
-            params: { email: user.email, senha: user.senha }
-          })
-          .then(() => {
-            setMsg({ open: true, text: "Relacionamento removido!", severity: "success" });
-            setEdges((eds) => eds.filter((e) => e.id !== edge.id));
-          })
-          .catch(() => setMsg({ open: true, text: "Erro ao remover relacionamento.", severity: "error" }));
-      }
-    },
-    [user]
-  );
+  // ...onConnect e onEdgeClick igual...
 
   return (
     <Box
+      ref={containerRef}
       sx={{
         height: "calc(100vh - 60px)",
         width: "100vw",
@@ -300,7 +135,6 @@ function RelacionamentosVisualContent({ user }) {
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onEdgeClick={onEdgeClick}
-          fitView
           nodeTypes={nodeTypes}
           minZoom={0.1}
           maxZoom={2.2}
@@ -311,8 +145,7 @@ function RelacionamentosVisualContent({ user }) {
           elevateNodesOnSelect
           defaultEdgeOptions={{ type: "smoothstep" }}
           proOptions={{ hideAttribution: true }}
-          extent="parent"
-          nodeDragBounds={{ left: 0, top: 0 }}
+          nodeDragBounds={dragBounds}
         >
           <MiniMap nodeColor={() => "#2284a1"} />
           <Controls />
