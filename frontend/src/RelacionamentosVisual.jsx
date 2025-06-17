@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from "react";
+import React from "react";
 import ReactFlow, {
   ReactFlowProvider,
   useNodesState,
@@ -85,7 +85,6 @@ function TableNode({ data, selected }) {
 }
 const nodeTypes = { table: TableNode };
 
-// Defina um canvas GRANDE para poder rolar, mas limite o arrasto dos nodes
 function RelacionamentosBI() {
   const [nodes, setNodes, onNodesChange] = useNodesState([
     {
@@ -133,9 +132,10 @@ function RelacionamentosBI() {
           onEdgesChange={onEdgesChange}
           nodeTypes={nodeTypes}
           nodeDragBounds={dragBounds}
-          panOnDrag={false} // <- Desabilita o PAN (não arrasta fundo)
+          panOnDrag={false} // <- DESABILITA O PAN! Só scrolla.
           nodesDraggable
           nodesConnectable
+          fitView={false}
         />
       </div>
     </div>
