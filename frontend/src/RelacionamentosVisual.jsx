@@ -10,7 +10,20 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { api } from "./api";
 
-// Node customizado
+// Configurações do canvas e tamanho mínimo dos nodes
+const minNodeWidth = 170;
+const minNodeHeight = 40;
+const canvasWidth = 2600;
+const canvasHeight = 1600;
+
+const dragBounds = {
+  left: 0,
+  top: 0,
+  right: canvasWidth - minNodeWidth,
+  bottom: canvasHeight - minNodeHeight
+};
+
+// Node customizado estilo Power BI
 function TableNode({ data, selected }) {
   return (
     <div
@@ -18,7 +31,7 @@ function TableNode({ data, selected }) {
         background: "#fff",
         border: "2.5px solid #2284a1",
         borderRadius: 16,
-        minWidth: 170,
+        minWidth: minNodeWidth,
         maxWidth: 360,
         boxShadow: "0 2px 16px #2284a128",
         padding: 13,
@@ -31,8 +44,8 @@ function TableNode({ data, selected }) {
       <NodeResizer
         color="#0B2132"
         isVisible={selected}
-        minWidth={120}
-        minHeight={38}
+        minWidth={minNodeWidth}
+        minHeight={minNodeHeight}
         lineStyle={{ borderWidth: 2 }}
       />
       <div style={{ fontWeight: 700, color: "#0B2132", marginBottom: 12, fontSize: 19, letterSpacing: 0.5 }}>
@@ -92,11 +105,6 @@ function RelacionamentosBI({ user }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [loading, setLoading] = useState(true);
 
-  // Canvas gigante, cabem muitas tabelas — ajuste conforme seu banco
-  const canvasWidth = 2600;
-  const canvasHeight = 1600;
-  const dragBounds = { left: 0, top: 0, right: canvasWidth, bottom: canvasHeight };
-
   useEffect(() => {
     if (!user?.empresa_id) return;
     setLoading(true);
@@ -128,7 +136,7 @@ function RelacionamentosBI({ user }) {
               x: 80 + col * spacingX,
               y: 40 + row * spacingY,
             },
-            style: { minWidth: 170, minHeight: 40 },
+            style: { minWidth: minNodeWidth, minHeight: minNodeHeight },
             resizable: true,
           };
         });
