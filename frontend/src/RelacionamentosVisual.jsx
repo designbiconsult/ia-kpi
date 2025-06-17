@@ -15,7 +15,7 @@ import "reactflow/dist/style.css";
 import { api } from "./api";
 import { Alert, Snackbar, Box, Button, CircularProgress } from "@mui/material";
 
-// Componente da tabela customizada, com resize melhorado:
+// Componente da tabela customizada, com resize e overflow controlado:
 function TableNode({ data, selected }) {
   return (
     <div
@@ -25,12 +25,13 @@ function TableNode({ data, selected }) {
         borderRadius: 12,
         minWidth: 120,
         maxWidth: 440,
-        minHeight: 28, // agora pode ficar bem pequeno!
+        minHeight: 28,
         boxShadow: "0 2px 16px #2284a128",
-        padding: 4, // menos padding, mais área útil
+        padding: 4,
         position: "relative",
         height: "100%",
-        boxSizing: "border-box"
+        boxSizing: "border-box",
+        overflow: "hidden"
       }}
     >
       <NodeResizer
@@ -40,10 +41,27 @@ function TableNode({ data, selected }) {
         minHeight={28}
         lineStyle={{ borderWidth: 2 }}
       />
-      <div style={{ fontWeight: 700, color: "#0B2132", marginBottom: 4, fontSize: 15 }}>
+      <div
+        style={{
+          fontWeight: 700,
+          color: "#0B2132",
+          marginBottom: 4,
+          fontSize: 15,
+          whiteSpace: "nowrap",
+          textOverflow: "ellipsis",
+          overflow: "hidden"
+        }}
+        title={data.label}
+      >
         {data.label}
       </div>
-      <div>
+      <div
+        style={{
+          maxHeight: "100%",
+          overflowY: "auto",
+          overflowX: "hidden"
+        }}
+      >
         {data.columns.map((col) => (
           <div
             key={col}
@@ -53,8 +71,12 @@ function TableNode({ data, selected }) {
               borderRadius: 5,
               background: "#e4f3fa",
               fontSize: 12,
-              position: "relative"
+              position: "relative",
+              whiteSpace: "nowrap",
+              textOverflow: "ellipsis",
+              overflow: "hidden"
             }}
+            title={col}
           >
             <Handle
               type="source"
@@ -77,7 +99,7 @@ function TableNode({ data, selected }) {
 }
 const nodeTypes = { table: TableNode };
 
-// Botão de auto-ajustar, DENTRO do ReactFlow
+// Botão de auto-ajustar
 function AutoFitButton() {
   const { fitView } = useReactFlow();
   return (
