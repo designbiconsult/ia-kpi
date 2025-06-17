@@ -10,28 +10,99 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { api } from "./api";
 
-// ... (TableNode igual ao anterior)
-
 const minNodeWidth = 170;
 const minNodeHeight = 40;
 const canvasWidth = 2600;
 const canvasHeight = 1600;
 
-// REMOVE nodeDragBounds!
-// const dragBounds = { ... }
+// Node customizado estilo Power BI
+function TableNode({ data, selected }) {
+  return (
+    <div
+      style={{
+        background: "#fff",
+        border: "2.5px solid #2284a1",
+        borderRadius: 16,
+        minWidth: minNodeWidth,
+        maxWidth: 360,
+        boxShadow: "0 2px 16px #2284a128",
+        padding: 13,
+        position: "relative",
+        height: "100%",
+        boxSizing: "border-box",
+        overflow: "hidden"
+      }}
+    >
+      <NodeResizer
+        color="#0B2132"
+        isVisible={selected}
+        minWidth={minNodeWidth}
+        minHeight={minNodeHeight}
+        lineStyle={{ borderWidth: 2 }}
+      />
+      <div style={{ fontWeight: 700, color: "#0B2132", marginBottom: 12, fontSize: 19, letterSpacing: 0.5 }}>
+        {data.label}
+      </div>
+      <div style={{ maxHeight: 340, overflowY: "auto" }}>
+        {data.columns.map((col) => (
+          <div
+            key={col}
+            style={{
+              margin: "7px 0",
+              padding: "6px 14px",
+              borderRadius: 8,
+              background: "#e4f3fa",
+              fontSize: 15.5,
+              position: "relative",
+              cursor: "crosshair"
+            }}
+          >
+            <Handle
+              type="source"
+              id={`${data.label}.${col}`}
+              position={Position.Right}
+              style={{
+                background: "rgba(0,0,0,0)",
+                width: 12,
+                height: 12,
+                top: "50%",
+                right: -6,
+                transform: "translateY(-50%)",
+              }}
+            />
+            <Handle
+              type="target"
+              id={`${data.label}.${col}`}
+              position={Position.Left}
+              style={{
+                background: "rgba(0,0,0,0)",
+                width: 12,
+                height: 12,
+                top: "50%",
+                left: -6,
+                transform: "translateY(-50%)",
+              }}
+            />
+            {col}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+const nodeTypes = { table: TableNode };
 
 function RelacionamentosBI({ user }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [loading, setLoading] = useState(true);
 
-  // **BLOQUEIA O NODE NA BORDA CORRETAMENTE!**
+  // Callback para impedir nodes de ultrapassarem os limites do canvas
   const onNodesChangeFixed = useCallback(
     (changes) => {
       const fixedChanges = changes.map((change) => {
         if (change.type === "position" && change.position) {
           let { x, y } = change.position;
-          // Não deixa passar das bordas!
           x = Math.max(0, Math.min(x, canvasWidth - minNodeWidth));
           y = Math.max(0, Math.min(y, canvasHeight - minNodeHeight));
           return { ...change, position: { x, y } };
