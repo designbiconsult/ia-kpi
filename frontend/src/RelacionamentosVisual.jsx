@@ -1,14 +1,14 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import ReactFlow, {
   MiniMap,
   Controls,
   Background,
-  addEdge,
   useNodesState,
   useEdgesState,
   Handle,
   Position,
-  NodeResizer
+  NodeResizer,
+  useReactFlow
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { api } from "./api";
@@ -74,13 +74,33 @@ function TableNode({ data, selected }) {
 
 const nodeTypes = { table: TableNode };
 
+// BOTÃO DE AUTO AJUSTE DENTRO DO REACT FLOW
+function AutoFitButton() {
+  const { fitView } = useReactFlow();
+  return (
+    <Button
+      variant="contained"
+      sx={{
+        position: "absolute",
+        zIndex: 12,
+        top: 14,
+        left: 250,
+        bgcolor: "#0B2132",
+        fontWeight: 700,
+        "&:hover": { bgcolor: "#06597a" }
+      }}
+      onClick={() => fitView({ padding: 0.13, includeHiddenNodes: true })}
+    >
+      Auto-ajustar
+    </Button>
+  );
+}
+
 export default function RelacionamentosVisual({ user }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [msg, setMsg] = useState({ open: false, text: "", severity: "success" });
   const [loading, setLoading] = useState(true);
-
-  const reactFlowRef = useRef(null);
 
   // Carrega tabelas e relacionamentos
   useEffect(() => {
@@ -112,7 +132,7 @@ export default function RelacionamentosVisual({ user }) {
           data: { label: t, columns: colunasPorTabela[t] },
           position: { x: 120 + 260 * (idx % 4), y: 60 + 220 * Math.floor(idx / 4) },
           style: { minWidth: 220, minHeight: 90 },
-          resizable: true, // Ativa os handles de resize
+          resizable: true,
         }));
 
         // Cria edges a partir dos relacionamentos
@@ -131,11 +151,6 @@ export default function RelacionamentosVisual({ user }) {
         setNodes(initialNodes);
         setEdges(initialEdges);
 
-        setTimeout(() => {
-          if (reactFlowRef.current) {
-            reactFlowRef.current.fitView({ padding: 0.13, includeHiddenNodes: true });
-          }
-        }, 400);
         setLoading(false);
       })
       .catch(() => {
@@ -222,51 +237,30 @@ export default function RelacionamentosVisual({ user }) {
         </Box>
       )}
       {!loading && (
-        <>
-          <Button
-            variant="contained"
-            sx={{
-              position: "absolute",
-              zIndex: 12,
-              top: 14,
-              left: 250,
-              bgcolor: "#0B2132",
-              fontWeight: 700,
-              "&:hover": { bgcolor: "#06597a" }
-            }}
-            onClick={() => {
-              if (reactFlowRef.current) {
-                reactFlowRef.current.fitView({ padding: 0.13, includeHiddenNodes: true });
-              }
-            }}
-          >
-            Auto-ajustar
-          </Button>
-          <ReactFlow
-            ref={reactFlowRef}
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onEdgeClick={onEdgeClick}
-            fitView
-            nodeTypes={nodeTypes}
-            minZoom={0.1}
-            maxZoom={2.2}
-            panOnDrag
-            nodesDraggable
-            nodesConnectable
-            edgesFocusable
-            elevateNodesOnSelect
-            defaultEdgeOptions={{ type: "smoothstep" }}
-            proOptions={{ hideAttribution: true }}
-          >
-            <MiniMap nodeColor={() => "#2284a1"} />
-            <Controls />
-            <Background color="#e4f3fa" gap={18} />
-          </ReactFlow>
-        </>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onEdgeClick={onEdgeClick}
+          fitView
+          nodeTypes={nodeTypes}
+          minZoom={0.1}
+          maxZoom={2.2}
+          panOnDrag
+          nodesDraggable
+          nodesConnectable
+          edgesFocusable
+          elevateNodesOnSelect
+          defaultEdgeOptions={{ type: "smoothstep" }}
+          proOptions={{ hideAttribution: true }}
+        >
+          <MiniMap nodeColor={() => "#2284a1"} />
+          <Controls />
+          <Background color="#e4f3fa" gap={18} />
+          <AutoFitButton />
+        </ReactFlow>
       )}
       <Snackbar
         open={msg.open}
