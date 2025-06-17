@@ -1,109 +1,47 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import ReactFlow, {
   ReactFlowProvider,
   useNodesState,
   useEdgesState,
   NodeResizer,
   Handle,
-  Position,
+  Position
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { api } from "./api";
 
-// Configurações do canvas e tamanho mínimo dos nodes
+// ... (TableNode igual ao anterior)
+
 const minNodeWidth = 170;
 const minNodeHeight = 40;
 const canvasWidth = 2600;
 const canvasHeight = 1600;
 
-const dragBounds = {
-  left: 0,
-  top: 0,
-  right: canvasWidth - minNodeWidth,
-  bottom: canvasHeight - minNodeHeight
-};
-
-// Node customizado estilo Power BI
-function TableNode({ data, selected }) {
-  return (
-    <div
-      style={{
-        background: "#fff",
-        border: "2.5px solid #2284a1",
-        borderRadius: 16,
-        minWidth: minNodeWidth,
-        maxWidth: 360,
-        boxShadow: "0 2px 16px #2284a128",
-        padding: 13,
-        position: "relative",
-        height: "100%",
-        boxSizing: "border-box",
-        overflow: "hidden"
-      }}
-    >
-      <NodeResizer
-        color="#0B2132"
-        isVisible={selected}
-        minWidth={minNodeWidth}
-        minHeight={minNodeHeight}
-        lineStyle={{ borderWidth: 2 }}
-      />
-      <div style={{ fontWeight: 700, color: "#0B2132", marginBottom: 12, fontSize: 19, letterSpacing: 0.5 }}>
-        {data.label}
-      </div>
-      <div style={{ maxHeight: 340, overflowY: "auto" }}>
-        {data.columns.map((col) => (
-          <div
-            key={col}
-            style={{
-              margin: "7px 0",
-              padding: "6px 14px",
-              borderRadius: 8,
-              background: "#e4f3fa",
-              fontSize: 15.5,
-              position: "relative",
-              cursor: "crosshair"
-            }}
-          >
-            <Handle
-              type="source"
-              id={`${data.label}.${col}`}
-              position={Position.Right}
-              style={{
-                background: "rgba(0,0,0,0)",
-                width: 12,
-                height: 12,
-                top: "50%",
-                right: -6,
-                transform: "translateY(-50%)",
-              }}
-            />
-            <Handle
-              type="target"
-              id={`${data.label}.${col}`}
-              position={Position.Left}
-              style={{
-                background: "rgba(0,0,0,0)",
-                width: 12,
-                height: 12,
-                top: "50%",
-                left: -6,
-                transform: "translateY(-50%)",
-              }}
-            />
-            {col}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-const nodeTypes = { table: TableNode };
+// REMOVE nodeDragBounds!
+// const dragBounds = { ... }
 
 function RelacionamentosBI({ user }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [loading, setLoading] = useState(true);
+
+  // **BLOQUEIA O NODE NA BORDA CORRETAMENTE!**
+  const onNodesChangeFixed = useCallback(
+    (changes) => {
+      const fixedChanges = changes.map((change) => {
+        if (change.type === "position" && change.position) {
+          let { x, y } = change.position;
+          // Não deixa passar das bordas!
+          x = Math.max(0, Math.min(x, canvasWidth - minNodeWidth));
+          y = Math.max(0, Math.min(y, canvasHeight - minNodeHeight));
+          return { ...change, position: { x, y } };
+        }
+        return change;
+      });
+      onNodesChange(fixedChanges);
+    },
+    [onNodesChange]
+  );
 
   useEffect(() => {
     if (!user?.empresa_id) return;
@@ -119,7 +57,6 @@ function RelacionamentosBI({ user }) {
           })
         );
 
-        // Distribuição grid dinâmica, máximo 6 por linha
         const colCount = Math.min(6, Math.max(1, Math.ceil(Math.sqrt(tabelas.length))));
         const rowCount = Math.ceil(tabelas.length / colCount);
         const spacingX = Math.floor((canvasWidth - 120) / (colCount + 1));
@@ -151,7 +88,7 @@ function RelacionamentosBI({ user }) {
       style={{
         width: "100vw",
         height: "93vh",
-        background: "#d3e2ed", // Fora do canvas
+        background: "#d3e2ed",
         overflow: "auto",
         position: "relative",
         display: "flex",
@@ -176,10 +113,9 @@ function RelacionamentosBI({ user }) {
         <ReactFlow
           nodes={nodes}
           edges={edges}
-          onNodesChange={onNodesChange}
+          onNodesChange={onNodesChangeFixed}
           onEdgesChange={onEdgesChange}
           nodeTypes={nodeTypes}
-          nodeDragBounds={dragBounds}
           panOnDrag={false}
           nodesDraggable
           nodesConnectable
