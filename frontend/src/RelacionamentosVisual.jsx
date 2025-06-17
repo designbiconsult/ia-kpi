@@ -186,16 +186,15 @@ function RelacionamentosVisualContent({ user, api, tabelasDemo, colunasDemo, edg
 
   // Bloquear pan além do canvas (Power BI style)
   const onMove = useCallback((e, viewport) => {
-    if (containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
-      let { x, y } = viewport;
-      // Não deixa o canvas "sumir" do quadro visível
-      if (x > 0) x = 0;
-      if (y > 0) y = 0;
-      // Não deixa mover para longe para direita/baixo (poderia calcular pelo tamanho total dos nodes)
-      setViewport({ x, y, zoom: viewport.zoom });
-    }
-  }, [setViewport]);
+  if (containerRef.current) {
+    let { x, y } = viewport;
+    let changed = false;
+    if (x > 0) { x = 0; changed = true; }
+    if (y > 0) { y = 0; changed = true; }
+    if (changed) setViewport({ x, y, zoom: viewport.zoom });
+  }
+}, [setViewport]);
+
 
   return (
     <Box
