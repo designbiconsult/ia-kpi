@@ -15,7 +15,6 @@ const minNodeHeight = 40;
 const canvasWidth = 2600;
 const canvasHeight = 1600;
 
-// Node customizado estilo Power BI
 function TableNode({ data, selected }) {
   return (
     <div
@@ -97,14 +96,15 @@ function RelacionamentosBI({ user }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [loading, setLoading] = useState(true);
 
-  // Callback para impedir nodes de ultrapassarem os limites do canvas
+  // Corrige movimentação e resize, NÃO deixa x<0, y<0 (lado esquerdo/cima)
   const onNodesChangeFixed = useCallback(
     (changes) => {
       const fixedChanges = changes.map((change) => {
         if (change.type === "position" && change.position) {
           let { x, y } = change.position;
-          x = Math.max(0, Math.min(x, canvasWidth - minNodeWidth));
-          y = Math.max(0, Math.min(y, canvasHeight - minNodeHeight));
+          // trava apenas para esquerda e cima:
+          x = Math.max(0, x);
+          y = Math.max(0, y);
           return { ...change, position: { x, y } };
         }
         return change;
