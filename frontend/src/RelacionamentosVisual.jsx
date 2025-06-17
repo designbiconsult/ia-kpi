@@ -91,7 +91,7 @@ function TableNode({ data, selected }) {
                 right: 0,
                 bottom: 0,
                 borderRadius: 5,
-                background: "rgba(0,0,0,0)", // invisível mas toda linha é arrastável!
+                background: "rgba(0,0,0,0)",
                 width: "100%",
                 height: "100%",
                 zIndex: 2,
@@ -150,7 +150,6 @@ function AutoFitButton() {
   );
 }
 
-// Conteúdo da tela
 function RelacionamentosVisualContent({ user }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -160,7 +159,6 @@ function RelacionamentosVisualContent({ user }) {
   // Para autoajustar ao abrir:
   const { fitView, getNodes } = useReactFlow();
 
-  // Carrega tabelas e relacionamentos
   useEffect(() => {
     if (!user || !user.empresa_id) return;
     setLoading(true);
@@ -173,8 +171,6 @@ function RelacionamentosVisualContent({ user }) {
       .then(async ([tabRes, relRes]) => {
         const tabelas = tabRes.data || [];
         const relacionamentos = relRes.data || [];
-
-        // Buscar as colunas de cada tabela
         const colunasPorTabela = {};
         await Promise.all(
           tabelas.map(async (t) => {
@@ -182,8 +178,6 @@ function RelacionamentosVisualContent({ user }) {
             colunasPorTabela[t] = resp.data || [];
           })
         );
-
-        // Distribui as tabelas mais compactas
         const initialNodes = tabelas.map((t, idx) => ({
           id: t,
           type: "table",
@@ -192,8 +186,6 @@ function RelacionamentosVisualContent({ user }) {
           style: { minWidth: 120, minHeight: 28 },
           resizable: true,
         }));
-
-        // Cria edges a partir dos relacionamentos
         const initialEdges = (relacionamentos || []).map((r) => ({
           id: `e-${r.id}`,
           source: r.tabela_origem,
@@ -208,7 +200,6 @@ function RelacionamentosVisualContent({ user }) {
 
         setNodes(initialNodes);
         setEdges(initialEdges);
-
         setLoading(false);
       })
       .catch(() => {
@@ -229,15 +220,12 @@ function RelacionamentosVisualContent({ user }) {
         fitView({ nodes: allNodeIds, padding: 0.1, includeHiddenNodes: true });
       }, 120);
     }
-    // eslint-disable-next-line
-  }, [loading, nodes]);
+  }, [loading, nodes, fitView, getNodes]);
 
-  // Criar novo relacionamento ao conectar
   const onConnect = useCallback(
     async (params) => {
       const [tabela_origem, coluna_origem] = params.sourceHandle.split(".");
       const [tabela_destino, coluna_destino] = params.targetHandle.split(".");
-
       try {
         await api.post("/relacionamentos", {
           tabela_origem,
@@ -275,7 +263,6 @@ function RelacionamentosVisualContent({ user }) {
     [user]
   );
 
-  // Remover relacionamento ao clicar na linha
   const onEdgeClick = useCallback(
     (event, edge) => {
       event.stopPropagation();
@@ -321,6 +308,8 @@ function RelacionamentosVisualContent({ user }) {
           elevateNodesOnSelect
           defaultEdgeOptions={{ type: "smoothstep" }}
           proOptions={{ hideAttribution: true }}
+          nodeDragBounds={{ left: 0, top: 0, right: 2200, bottom: 1100 }}
+          extent="parent"
         >
           <MiniMap nodeColor={() => "#2284a1"} />
           <Controls />
@@ -342,7 +331,6 @@ function RelacionamentosVisualContent({ user }) {
   );
 }
 
-// **PROVIDER** para o contexto do React Flow funcionar!
 export default function RelacionamentosVisual(props) {
   return (
     <ReactFlowProvider>
