@@ -15,7 +15,7 @@ import "reactflow/dist/style.css";
 import { api } from "./api";
 import { Alert, Snackbar, Box, Button, CircularProgress } from "@mui/material";
 
-// Componente da tabela customizada, com resize e overflow controlado:
+// Componente da tabela customizada, com handles cobrindo toda a linha!
 function TableNode({ data, selected }) {
   return (
     <div
@@ -74,21 +74,47 @@ function TableNode({ data, selected }) {
               position: "relative",
               whiteSpace: "nowrap",
               textOverflow: "ellipsis",
-              overflow: "hidden"
+              overflow: "hidden",
+              cursor: "crosshair"
             }}
             title={col}
           >
+            {/* Handles cobrem toda a linha! */}
             <Handle
               type="source"
               id={`${data.label}.${col}`}
               position={Position.Right}
-              style={{ right: -10, background: "#0B2132", width: 9, height: 9 }}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                borderRadius: 5,
+                background: "rgba(0,0,0,0)", // invisível mas toda linha é arrastável!
+                width: "100%",
+                height: "100%",
+                zIndex: 2,
+                cursor: "crosshair"
+              }}
             />
             <Handle
               type="target"
               id={`${data.label}.${col}`}
               position={Position.Left}
-              style={{ left: -10, background: "#0B2132", width: 9, height: 9 }}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                borderRadius: 5,
+                background: "rgba(0,0,0,0)",
+                width: "100%",
+                height: "100%",
+                zIndex: 2,
+                cursor: "crosshair"
+              }}
             />
             {col}
           </div>
