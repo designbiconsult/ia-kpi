@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import ReactFlow, {
   ReactFlowProvider,
   useNodesState,
@@ -96,50 +96,54 @@ function RelacionamentosBI({ user }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [loading, setLoading] = useState(true);
 
-  // Bloqueia mover para esquerda/cima; bloqueia RESIZE para a esquerda.
-  const onNodesChangeFixed = useCallback(
-    (changes) => {
-      setNodes((nds) =>
-        nds.map((node) => {
-          // Find if this node is being changed
-          const change = changes.find((c) => c.id === node.id);
-          if (!change) return node;
+  // Salvar o último width dos nodes (para impedir expansão para a esquerda)
+  const nodeWidths = useRef({}); // id -> width
 
-          let { x, y } = node.position;
-          let width = node.width || minNodeWidth;
-          let height = node.height || minNodeHeight;
+  // Custom onNodesChange: impede mover/escalar para a esquerda
+  const onNodesChangeFixed = (changes) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        const change = changes.find((c) => c.id === node.id);
+        if (!change) return node;
 
-          // Drag: não deixa mover pra esquerda/cima
-          if (change.type === "position" && change.position) {
-            x = Math.max(0, change.position.x);
-            y = Math.max(0, change.position.y);
+        let { x, y } = node.position;
+        let width = node.width || minNodeWidth;
+        let height = node.height || minNodeHeight;
+
+        // DRAG: não deixa mover pra esquerda/cima
+        if (change.type === "position" && change.position) {
+          x = Math.max(0, change.position.x);
+          y = Math.max(0, change.position.y);
+        }
+
+        // RESIZE: se em X=0, só pode crescer para direita
+        if (change.type === "dimensions" && node.selected) {
+          // Pega último width salvo ou atual
+          const prevWidth = nodeWidths.current[node.id] || width;
+          if (x === 0 && change.dimensions?.width && change.dimensions.width !== width) {
+            // Só permite aumentar para a direita (mantém width ou aumenta)
+            width = Math.max(change.dimensions.width, prevWidth, minNodeWidth);
+          } else if (change.dimensions?.width) {
+            width = Math.max(change.dimensions.width, minNodeWidth);
           }
-
-          // Resize: não deixa expandir para esquerda
-          if (change.type === "dimensions" && node.selected) {
-            // Se está grudado na borda esquerda (x == 0), só pode aumentar para a direita
-            if (x === 0 && change.dimensions?.width && change.dimensions.width !== width) {
-              width = Math.max(change.dimensions.width, minNodeWidth);
-            }
-            // Se x > 0 e reduz largura, ajusta X para manter lado esquerdo colado na borda
-            if (x < 0) {
-              width = width + x;
-              x = 0;
-            }
+          // Altura normal
+          if (change.dimensions?.height) {
+            height = Math.max(change.dimensions.height, minNodeHeight);
           }
+          // Salva o último width (pra X=0)
+          nodeWidths.current[node.id] = width;
+        }
 
-          return {
-            ...node,
-            position: { x, y },
-            width,
-            height,
-          };
-        })
-      );
-      onNodesChange(changes);
-    },
-    [onNodesChange]
-  );
+        return {
+          ...node,
+          position: { x, y },
+          width,
+          height,
+        };
+      })
+    );
+    onNodesChange(changes);
+  };
 
   useEffect(() => {
     if (!user?.empresa_id) return;
@@ -173,9 +177,13 @@ function RelacionamentosBI({ user }) {
             },
             style: { minWidth: minNodeWidth, minHeight: minNodeHeight },
             resizable: true,
+            width: minNodeWidth,
+            height: minNodeHeight
           };
         });
 
+        // Inicializa nodeWidths para cada tabela
+        initialNodes.forEach(node => { nodeWidths.current[node.id] = node.width || minNodeWidth });
         setNodes(initialNodes);
         setLoading(false);
       });
