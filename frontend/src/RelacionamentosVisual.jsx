@@ -10,7 +10,6 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { api } from "./api"; // Seu axios customizado
 
-// Node customizado: tabela com colunas e handles
 function TableNode({ data, selected }) {
   return (
     <div
@@ -88,15 +87,14 @@ function TableNode({ data, selected }) {
 const nodeTypes = { table: TableNode };
 
 function RelacionamentosBI({ user }) {
-  // Estados dos nodes/edges
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [loading, setLoading] = useState(true);
 
-  // Canvas fixo (tamanho ajustável, igual Power BI)
-  const dragBounds = { left: 0, top: 0, right: 1600, bottom: 900 };
+  // Tamanho do canvas
   const canvasWidth = 1600;
   const canvasHeight = 900;
+  const dragBounds = { left: 0, top: 0, right: canvasWidth, bottom: canvasHeight };
 
   // Carregar tabelas + colunas do backend
   useEffect(() => {
@@ -113,11 +111,11 @@ function RelacionamentosBI({ user }) {
           })
         );
 
-        // Distribui as tabelas no canvas: linhas/colunas automáticas
+        // Distribuir as tabelas automaticamente (em linhas e colunas)
         const colCount = Math.max(1, Math.ceil(Math.sqrt(tabelas.length)));
         const rowCount = Math.ceil(tabelas.length / colCount);
-        const spacingX = Math.floor(canvasWidth / (colCount + 1));
-        const spacingY = Math.floor(canvasHeight / (rowCount + 1));
+        const spacingX = Math.floor((canvasWidth - 120) / Math.max(1, colCount));
+        const spacingY = Math.floor((canvasHeight - 60) / Math.max(1, rowCount));
 
         const initialNodes = tabelas.map((t, idx) => {
           const row = Math.floor(idx / colCount);
@@ -127,8 +125,8 @@ function RelacionamentosBI({ user }) {
             type: "table",
             data: { label: t, columns: colunasPorTabela[t] },
             position: {
-              x: 60 + col * spacingX,
-              y: 50 + row * spacingY,
+              x: 40 + col * spacingX,
+              y: 30 + row * spacingY,
             },
             style: { minWidth: 140, minHeight: 60 },
             resizable: true,
@@ -138,22 +136,35 @@ function RelacionamentosBI({ user }) {
         setNodes(initialNodes);
         setLoading(false);
       });
-  // eslint-disable-next-line
   }, [user]);
-
-  // Edges/relações podem ser integrados aqui se quiser trazer do backend
 
   return (
     <div
       style={{
         width: "100vw",
         height: "90vh",
-        background: "#f8fafd",
+        background: "#cfd8dc", // Fora do canvas (cinza claro)
         overflow: "auto",
         position: "relative",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center"
       }}
     >
-      <div style={{ width: canvasWidth, height: canvasHeight, position: "relative" }}>
+      <div
+        style={{
+          width: canvasWidth,
+          height: canvasHeight,
+          background: "#e4f3fa",
+          border: "6px solid #06597a", // **Borda GROSSA, visível**
+          borderRadius: 32,
+          boxSizing: "border-box",
+          position: "relative",
+          boxShadow: "0 4px 42px #0b213214",
+          overflow: "hidden",
+          margin: "32px 0"
+        }}
+      >
         <ReactFlow
           nodes={nodes}
           edges={edges}
