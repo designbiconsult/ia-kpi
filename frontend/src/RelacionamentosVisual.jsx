@@ -15,7 +15,7 @@ import "reactflow/dist/style.css";
 import { api } from "./api";
 import { Alert, Snackbar, Box, Button, CircularProgress } from "@mui/material";
 
-// Componente da tabela customizada, com handles cobrindo toda a linha!
+// Tabela customizada com handles cobrindo toda linha
 function TableNode({ data, selected }) {
   return (
     <div
@@ -79,7 +79,6 @@ function TableNode({ data, selected }) {
             }}
             title={col}
           >
-            {/* Handles cobrem toda a linha! */}
             <Handle
               type="source"
               id={`${data.label}.${col}`}
@@ -125,7 +124,7 @@ function TableNode({ data, selected }) {
 }
 const nodeTypes = { table: TableNode };
 
-// Botão de auto-ajustar: força todos os nodes visíveis no viewport
+// Botão auto-ajustar
 function AutoFitButton() {
   const { fitView, getNodes } = useReactFlow();
   return (
@@ -212,7 +211,6 @@ function RelacionamentosVisualContent({ user }) {
       });
   }, [user]);
 
-  // Ao terminar de carregar nodes, autoajusta todas as tabelas visíveis
   useEffect(() => {
     if (!loading && nodes.length) {
       setTimeout(() => {
@@ -282,7 +280,16 @@ function RelacionamentosVisualContent({ user }) {
   );
 
   return (
-    <Box sx={{ height: "calc(100vh - 60px)", width: "100vw", background: "#f8fafd", position: "relative" }}>
+    // AQUI está o segredo do extent funcionar!
+    <Box
+      sx={{
+        height: "calc(100vh - 60px)",
+        width: "100vw",
+        background: "#f8fafd",
+        position: "relative",
+        overflow: "hidden" // ESSENCIAL!
+      }}
+    >
       {loading && (
         <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", height: "70vh" }}>
           <CircularProgress size={32} sx={{ mr: 2 }} />
@@ -308,7 +315,6 @@ function RelacionamentosVisualContent({ user }) {
           elevateNodesOnSelect
           defaultEdgeOptions={{ type: "smoothstep" }}
           proOptions={{ hideAttribution: true }}
-          nodeDragBounds={{ left: 0, top: 0, right: 2200, bottom: 1100 }}
           extent="parent"
         >
           <MiniMap nodeColor={() => "#2284a1"} />
