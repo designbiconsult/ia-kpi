@@ -1,59 +1,99 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import ReactFlow, {
   ReactFlowProvider,
   useNodesState,
   useEdgesState,
-  NodeResizer,
   Handle,
-  Position
+  Position,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { api } from "./api";
 
-const minNodeWidth = 170;
-const minNodeHeight = 40;
-const canvasWidth = 2600;
-const canvasHeight = 1600;
+// Parâmetros do visual
+const minNodeWidth = 160;
+const maxNodeWidth = 480;
+const minNodeHeight = 48;
+const canvasWidth = 2200;
+const canvasHeight = 1200;
 
-function TableNode({ data, selected }) {
+// Componente customizado Power BI style
+function TableNode({ id, data, selected, width = minNodeWidth, setNodes }) {
+  const nodeRef = useRef(null);
+  const [isResizing, setIsResizing] = useState(false);
+
+  // Resize apenas pelo lado direito
+  useEffect(() => {
+    function onMouseMove(e) {
+      if (!isResizing) return;
+      if (!nodeRef.current) return;
+      const rect = nodeRef.current.getBoundingClientRect();
+      let newWidth = Math.max(minNodeWidth, Math.min(maxNodeWidth, e.clientX - rect.left));
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === id
+            ? { ...n, width: newWidth }
+            : n
+        )
+      );
+    }
+    function onMouseUp() {
+      setIsResizing(false);
+    }
+    if (isResizing) {
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
+    }
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [isResizing, id, setNodes]);
+
   return (
     <div
+      ref={nodeRef}
       style={{
         background: "#fff",
-        border: "2.5px solid #2284a1",
+        border: selected ? "3px solid #0B2132" : "2.5px solid #2284a1",
         borderRadius: 16,
         minWidth: minNodeWidth,
-        maxWidth: 360,
+        width: width,
+        maxWidth: maxNodeWidth,
+        minHeight: minNodeHeight,
         boxShadow: "0 2px 16px #2284a128",
         padding: 13,
         position: "relative",
-        height: "100%",
-        boxSizing: "border-box",
-        overflow: "hidden"
+        transition: "box-shadow 0.15s",
+        userSelect: "none",
+        overflow: "hidden",
+        boxSizing: "border-box"
       }}
     >
-      <NodeResizer
-        color="#0B2132"
-        isVisible={selected}
-        minWidth={minNodeWidth}
-        minHeight={minNodeHeight}
-        lineStyle={{ borderWidth: 2 }}
-      />
-      <div style={{ fontWeight: 700, color: "#0B2132", marginBottom: 12, fontSize: 19, letterSpacing: 0.5 }}>
+      <div style={{
+        fontWeight: 700,
+        color: "#0B2132",
+        marginBottom: 10,
+        fontSize: 18,
+        letterSpacing: 0.4,
+        overflow: "hidden",
+        textOverflow: "ellipsis"
+      }}>
         {data.label}
       </div>
-      <div style={{ maxHeight: 340, overflowY: "auto" }}>
+      <div style={{ maxHeight: 330, overflowY: "auto" }}>
         {data.columns.map((col) => (
           <div
             key={col}
             style={{
-              margin: "7px 0",
+              margin: "6px 0",
               padding: "6px 14px",
               borderRadius: 8,
               background: "#e4f3fa",
-              fontSize: 15.5,
+              fontSize: 15.2,
               position: "relative",
-              cursor: "crosshair"
+              cursor: "crosshair",
+              overflow: "hidden",
+              textOverflow: "ellipsis"
             }}
           >
             <Handle
@@ -62,11 +102,11 @@ function TableNode({ data, selected }) {
               position={Position.Right}
               style={{
                 background: "rgba(0,0,0,0)",
-                width: 12,
-                height: 12,
+                width: 13,
+                height: 13,
                 top: "50%",
-                right: -6,
-                transform: "translateY(-50%)",
+                right: -7,
+                transform: "translateY(-50%)"
               }}
             />
             <Handle
@@ -75,73 +115,47 @@ function TableNode({ data, selected }) {
               position={Position.Left}
               style={{
                 background: "rgba(0,0,0,0)",
-                width: 12,
-                height: 12,
+                width: 13,
+                height: 13,
                 top: "50%",
-                left: -6,
-                transform: "translateY(-50%)",
+                left: -7,
+                transform: "translateY(-50%)"
               }}
             />
             {col}
           </div>
         ))}
       </div>
+      {/* Handle para resize só à direita */}
+      <div
+        onMouseDown={() => setIsResizing(true)}
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          height: "100%",
+          width: 9,
+          cursor: "ew-resize",
+          background: selected ? "#2284a11a" : "transparent",
+          zIndex: 2
+        }}
+        title="Ajustar largura (só à direita)"
+      />
     </div>
   );
 }
-const nodeTypes = { table: TableNode };
+
+// Wrapper para o node, para ter acesso ao setNodes
+const NodeWrapper = (setNodes) => (props) => (
+  <TableNode {...props} setNodes={setNodes} />
+);
 
 function RelacionamentosBI({ user }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [loading, setLoading] = useState(true);
 
-  // Track last valid width for each node
-  const lastWidthRef = useRef({});
-
-  const onNodesChangeFixed = (changes) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        const change = changes.find((c) => c.id === node.id);
-        if (!change) return node;
-
-        let { x, y } = node.position;
-        let width = node.width || minNodeWidth;
-        let height = node.height || minNodeHeight;
-
-        // DRAG: não deixa mover pra esquerda/cima
-        if (change.type === "position" && change.position) {
-          x = Math.max(0, change.position.x);
-          y = Math.max(0, change.position.y);
-        }
-
-        // RESIZE: se x == 0, não permite width aumentar além do atual (só pra direita)
-        if (change.type === "dimensions" && node.selected) {
-          const prevWidth = lastWidthRef.current[node.id] || width;
-          if (x === 0 && change.dimensions?.width) {
-            // só aceita resize pra direita (aumenta só pra direita)
-            width = Math.max(minNodeWidth, Math.min(change.dimensions.width, prevWidth));
-          } else if (change.dimensions?.width) {
-            width = Math.max(change.dimensions.width, minNodeWidth);
-          }
-          if (change.dimensions?.height) {
-            height = Math.max(change.dimensions.height, minNodeHeight);
-          }
-          // Salva o último width válido
-          lastWidthRef.current[node.id] = width;
-        }
-
-        return {
-          ...node,
-          position: { x, y },
-          width,
-          height,
-        };
-      })
-    );
-    onNodesChange(changes);
-  };
-
+  // Carrega tabelas reais e monta os nodes
   useEffect(() => {
     if (!user?.empresa_id) return;
     setLoading(true);
@@ -156,9 +170,10 @@ function RelacionamentosBI({ user }) {
           })
         );
 
+        // Distribuição grid automática
         const colCount = Math.min(6, Math.max(1, Math.ceil(Math.sqrt(tabelas.length))));
         const rowCount = Math.ceil(tabelas.length / colCount);
-        const spacingX = Math.floor((canvasWidth - 120) / (colCount + 1));
+        const spacingX = Math.floor((canvasWidth - 180) / (colCount + 1));
         const spacingY = Math.floor((canvasHeight - 60) / (rowCount + 1));
 
         const initialNodes = tabelas.map((t, idx) => {
@@ -166,31 +181,34 @@ function RelacionamentosBI({ user }) {
           const col = idx % colCount;
           return {
             id: t,
-            type: "table",
+            type: "tableNodeCustom",
             data: { label: t, columns: colunasPorTabela[t] },
             position: {
-              x: 80 + col * spacingX,
+              x: 100 + col * spacingX,
               y: 40 + row * spacingY,
             },
             style: { minWidth: minNodeWidth, minHeight: minNodeHeight },
-            resizable: true,
             width: minNodeWidth,
-            height: minNodeHeight
+            height: minNodeHeight,
+            resizable: true
           };
         });
 
-        // Inicializa widths
-        initialNodes.forEach(node => { lastWidthRef.current[node.id] = node.width || minNodeWidth });
         setNodes(initialNodes);
         setLoading(false);
       });
   }, [user]);
 
+  // nodeTypes injeta setNodes em cada node
+  const nodeTypes = {
+    tableNodeCustom: NodeWrapper(setNodes)
+  };
+
   return (
     <div
       style={{
         width: "100vw",
-        height: "93vh",
+        height: "92vh",
         background: "#d3e2ed",
         overflow: "auto",
         position: "relative",
@@ -205,18 +223,18 @@ function RelacionamentosBI({ user }) {
           height: canvasHeight,
           background: "#f6fbfe",
           border: "7px solid #1976d2",
-          borderRadius: 40,
+          borderRadius: 36,
           boxSizing: "border-box",
           position: "relative",
           boxShadow: "0 4px 32px #1976d224",
           overflow: "hidden",
-          margin: "38px 0"
+          margin: "32px 0"
         }}
       >
         <ReactFlow
           nodes={nodes}
           edges={edges}
-          onNodesChange={onNodesChangeFixed}
+          onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           nodeTypes={nodeTypes}
           panOnDrag={false}
