@@ -125,9 +125,9 @@ function TableNode({ data, selected }) {
 }
 const nodeTypes = { table: TableNode };
 
-// Botão de auto-ajustar
+// Botão de auto-ajustar: força todos os nodes visíveis no viewport
 function AutoFitButton() {
-  const { fitView } = useReactFlow();
+  const { fitView, getNodes } = useReactFlow();
   return (
     <Button
       variant="contained"
@@ -140,7 +140,10 @@ function AutoFitButton() {
         fontWeight: 700,
         "&:hover": { bgcolor: "#06597a" }
       }}
-      onClick={() => fitView({ padding: 0.13, includeHiddenNodes: true })}
+      onClick={() => {
+        const allNodeIds = getNodes().map((n) => n.id);
+        fitView({ nodes: allNodeIds, padding: 0.1, includeHiddenNodes: true });
+      }}
     >
       Auto-ajustar
     </Button>
@@ -153,6 +156,9 @@ function RelacionamentosVisualContent({ user }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [msg, setMsg] = useState({ open: false, text: "", severity: "success" });
   const [loading, setLoading] = useState(true);
+
+  // Para autoajustar ao abrir:
+  const { fitView, getNodes } = useReactFlow();
 
   // Carrega tabelas e relacionamentos
   useEffect(() => {
@@ -214,6 +220,17 @@ function RelacionamentosVisualContent({ user }) {
         setLoading(false);
       });
   }, [user]);
+
+  // Ao terminar de carregar nodes, autoajusta todas as tabelas visíveis
+  useEffect(() => {
+    if (!loading && nodes.length) {
+      setTimeout(() => {
+        const allNodeIds = getNodes().map((n) => n.id);
+        fitView({ nodes: allNodeIds, padding: 0.1, includeHiddenNodes: true });
+      }, 120);
+    }
+    // eslint-disable-next-line
+  }, [loading, nodes]);
 
   // Criar novo relacionamento ao conectar
   const onConnect = useCallback(
