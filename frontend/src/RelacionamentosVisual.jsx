@@ -96,20 +96,39 @@ function RelacionamentosBI({ user }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [loading, setLoading] = useState(true);
 
-  // Corrige movimentação e resize, NÃO deixa x<0, y<0 (lado esquerdo/cima)
+  // Ajuste para drag e resize: impede sair do canvas para esquerda/cima,
+  // e impede que o redimensionamento permita "invadir" a esquerda ou topo.
   const onNodesChangeFixed = useCallback(
     (changes) => {
-      const fixedChanges = changes.map((change) => {
-        if (change.type === "position" && change.position) {
-          let { x, y } = change.position;
-          // trava apenas para esquerda e cima:
-          x = Math.max(0, x);
-          y = Math.max(0, y);
-          return { ...change, position: { x, y } };
-        }
-        return change;
-      });
-      onNodesChange(fixedChanges);
+      setNodes((nds) =>
+        nds.map((node) => {
+          const nodeChange = changes.find(
+            (c) => c.id === node.id && (c.type === "position" || c.type === "dimensions")
+          );
+          if (!nodeChange) return node;
+          let { x, y } = node.position;
+          let { width = node.width, height = node.height } = node;
+          // Arraste: impede ir para negativo
+          if (nodeChange.type === "position" && nodeChange.position) {
+            x = Math.max(0, nodeChange.position.x);
+            y = Math.max(0, nodeChange.position.y);
+          }
+          // Redimensionamento: impede aumentar para esquerda/topo
+          if (nodeChange.type === "dimensions" && node.width && node.height) {
+            // Se o node está na borda esquerda, trava largura máxima
+            if (x === 0 && width > canvasWidth) width = canvasWidth;
+            // Se o node está na borda superior, trava altura máxima
+            if (y === 0 && height > canvasHeight) height = canvasHeight;
+          }
+          return {
+            ...node,
+            position: { x, y },
+            width,
+            height,
+          };
+        })
+      );
+      onNodesChange(changes);
     },
     [onNodesChange]
   );
