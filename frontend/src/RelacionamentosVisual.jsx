@@ -1,14 +1,16 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import ReactFlow, {
   ReactFlowProvider,
   useNodesState,
   useEdgesState,
   NodeResizer,
   Handle,
-  Position
+  Position,
 } from "reactflow";
 import "reactflow/dist/style.css";
+import { api } from "./api"; // Seu axios customizado
 
+// Node customizado: tabela com colunas e handles
 function TableNode({ data, selected }) {
   return (
     <div
@@ -36,7 +38,7 @@ function TableNode({ data, selected }) {
       <div style={{ fontWeight: 700, color: "#0B2132", marginBottom: 8, fontSize: 18 }}>
         {data.label}
       </div>
-      <div style={{ maxHeight: 300, overflowY: "auto" }}>
+      <div style={{ maxHeight: 320, overflowY: "auto" }}>
         {data.columns.map((col) => (
           <div
             key={col}
@@ -47,7 +49,7 @@ function TableNode({ data, selected }) {
               background: "#e4f3fa",
               fontSize: 14,
               position: "relative",
-              cursor: "crosshair"
+              cursor: "crosshair",
             }}
           >
             <Handle
@@ -85,34 +87,61 @@ function TableNode({ data, selected }) {
 }
 const nodeTypes = { table: TableNode };
 
-function RelacionamentosBI() {
-  const [nodes, setNodes, onNodesChange] = useNodesState([
-    {
-      id: "Pedidos",
-      type: "table",
-      data: { label: "Pedidos", columns: ["ID", "Data", "ID_Cliente", "Valor", "Status"] },
-      position: { x: 100, y: 80 },
-      style: { minWidth: 120, minHeight: 36 },
-      resizable: true
-    },
-    {
-      id: "Clientes",
-      type: "table",
-      data: { label: "Clientes", columns: ["ID", "Nome", "Cidade", "UF"] },
-      position: { x: 400, y: 150 },
-      style: { minWidth: 120, minHeight: 36 },
-      resizable: true
-    }
-  ]);
+function RelacionamentosBI({ user }) {
+  // Estados dos nodes/edges
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Limite do canvas (igual Power BI)
-  const dragBounds = {
-    left: 0,
-    top: 0,
-    right: 1400,
-    bottom: 800
-  };
+  // Canvas fixo (tamanho ajustável, igual Power BI)
+  const dragBounds = { left: 0, top: 0, right: 1600, bottom: 900 };
+  const canvasWidth = 1600;
+  const canvasHeight = 900;
+
+  // Carregar tabelas + colunas do backend
+  useEffect(() => {
+    if (!user?.empresa_id) return;
+    setLoading(true);
+    api.get("/tabelas/listar", { params: { empresa_id: user.empresa_id } })
+      .then(async (tabRes) => {
+        const tabelas = tabRes.data || [];
+        const colunasPorTabela = {};
+        await Promise.all(
+          tabelas.map(async (t) => {
+            const resp = await api.get("/tabelas/colunas", { params: { tabela: t } });
+            colunasPorTabela[t] = resp.data || [];
+          })
+        );
+
+        // Distribui as tabelas no canvas: linhas/colunas automáticas
+        const colCount = Math.max(1, Math.ceil(Math.sqrt(tabelas.length)));
+        const rowCount = Math.ceil(tabelas.length / colCount);
+        const spacingX = Math.floor(canvasWidth / (colCount + 1));
+        const spacingY = Math.floor(canvasHeight / (rowCount + 1));
+
+        const initialNodes = tabelas.map((t, idx) => {
+          const row = Math.floor(idx / colCount);
+          const col = idx % colCount;
+          return {
+            id: t,
+            type: "table",
+            data: { label: t, columns: colunasPorTabela[t] },
+            position: {
+              x: 60 + col * spacingX,
+              y: 50 + row * spacingY,
+            },
+            style: { minWidth: 140, minHeight: 60 },
+            resizable: true,
+          };
+        });
+
+        setNodes(initialNodes);
+        setLoading(false);
+      });
+  // eslint-disable-next-line
+  }, [user]);
+
+  // Edges/relações podem ser integrados aqui se quiser trazer do backend
 
   return (
     <div
@@ -120,11 +149,11 @@ function RelacionamentosBI() {
         width: "100vw",
         height: "90vh",
         background: "#f8fafd",
-        overflow: "auto", // <- Scroll igual Power BI
-        position: "relative"
+        overflow: "auto",
+        position: "relative",
       }}
     >
-      <div style={{ width: 1400, height: 800, position: "relative" }}>
+      <div style={{ width: canvasWidth, height: canvasHeight, position: "relative" }}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -132,7 +161,7 @@ function RelacionamentosBI() {
           onEdgesChange={onEdgesChange}
           nodeTypes={nodeTypes}
           nodeDragBounds={dragBounds}
-          panOnDrag={false} // <- DESABILITA O PAN! Só scrolla.
+          panOnDrag={false}
           nodesDraggable
           nodesConnectable
           fitView={false}
@@ -142,10 +171,10 @@ function RelacionamentosBI() {
   );
 }
 
-export default function AppRelacionamentosBI() {
+export default function RelacionamentosVisual({ user }) {
   return (
     <ReactFlowProvider>
-      <RelacionamentosBI />
+      <RelacionamentosBI user={user} />
     </ReactFlowProvider>
   );
 }
