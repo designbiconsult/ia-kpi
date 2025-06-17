@@ -96,30 +96,38 @@ function RelacionamentosBI({ user }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [loading, setLoading] = useState(true);
 
-  // Ajuste para drag e resize: impede sair do canvas para esquerda/cima,
-  // e impede que o redimensionamento permita "invadir" a esquerda ou topo.
+  // Bloqueia mover para esquerda/cima; bloqueia RESIZE para a esquerda.
   const onNodesChangeFixed = useCallback(
     (changes) => {
       setNodes((nds) =>
         nds.map((node) => {
-          const nodeChange = changes.find(
-            (c) => c.id === node.id && (c.type === "position" || c.type === "dimensions")
-          );
-          if (!nodeChange) return node;
+          // Find if this node is being changed
+          const change = changes.find((c) => c.id === node.id);
+          if (!change) return node;
+
           let { x, y } = node.position;
-          let { width = node.width, height = node.height } = node;
-          // Arraste: impede ir para negativo
-          if (nodeChange.type === "position" && nodeChange.position) {
-            x = Math.max(0, nodeChange.position.x);
-            y = Math.max(0, nodeChange.position.y);
+          let width = node.width || minNodeWidth;
+          let height = node.height || minNodeHeight;
+
+          // Drag: não deixa mover pra esquerda/cima
+          if (change.type === "position" && change.position) {
+            x = Math.max(0, change.position.x);
+            y = Math.max(0, change.position.y);
           }
-          // Redimensionamento: impede aumentar para esquerda/topo
-          if (nodeChange.type === "dimensions" && node.width && node.height) {
-            // Se o node está na borda esquerda, trava largura máxima
-            if (x === 0 && width > canvasWidth) width = canvasWidth;
-            // Se o node está na borda superior, trava altura máxima
-            if (y === 0 && height > canvasHeight) height = canvasHeight;
+
+          // Resize: não deixa expandir para esquerda
+          if (change.type === "dimensions" && node.selected) {
+            // Se está grudado na borda esquerda (x == 0), só pode aumentar para a direita
+            if (x === 0 && change.dimensions?.width && change.dimensions.width !== width) {
+              width = Math.max(change.dimensions.width, minNodeWidth);
+            }
+            // Se x > 0 e reduz largura, ajusta X para manter lado esquerdo colado na borda
+            if (x < 0) {
+              width = width + x;
+              x = 0;
+            }
           }
+
           return {
             ...node,
             position: { x, y },
