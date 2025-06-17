@@ -15,29 +15,32 @@ import "reactflow/dist/style.css";
 import { api } from "./api";
 import { Alert, Snackbar, Box, Button, CircularProgress } from "@mui/material";
 
-// Componente da tabela customizada, com resize:
+// Componente da tabela customizada, com resize melhorado:
 function TableNode({ data, selected }) {
   return (
     <div
       style={{
         background: "#fff",
         border: "2.5px solid #2284a1",
-        borderRadius: 14,
-        minWidth: 220,
-        maxWidth: 380,
+        borderRadius: 12,
+        minWidth: 120,
+        maxWidth: 440,
+        minHeight: 28, // agora pode ficar bem pequeno!
         boxShadow: "0 2px 16px #2284a128",
-        padding: 14,
-        position: "relative"
+        padding: 4, // menos padding, mais área útil
+        position: "relative",
+        height: "100%",
+        boxSizing: "border-box"
       }}
     >
       <NodeResizer
         color="#0B2132"
         isVisible={selected}
-        minWidth={180}
-        minHeight={80}
+        minWidth={90}
+        minHeight={28}
         lineStyle={{ borderWidth: 2 }}
       />
-      <div style={{ fontWeight: 700, color: "#0B2132", marginBottom: 10, fontSize: 20 }}>
+      <div style={{ fontWeight: 700, color: "#0B2132", marginBottom: 4, fontSize: 15 }}>
         {data.label}
       </div>
       <div>
@@ -45,11 +48,11 @@ function TableNode({ data, selected }) {
           <div
             key={col}
             style={{
-              margin: "7px 0",
-              padding: "6px 12px",
-              borderRadius: 6,
+              margin: "2px 0",
+              padding: "2px 6px",
+              borderRadius: 5,
               background: "#e4f3fa",
-              fontSize: 16,
+              fontSize: 12,
               position: "relative"
             }}
           >
@@ -57,13 +60,13 @@ function TableNode({ data, selected }) {
               type="source"
               id={`${data.label}.${col}`}
               position={Position.Right}
-              style={{ right: -10, background: "#0B2132", width: 10, height: 10 }}
+              style={{ right: -10, background: "#0B2132", width: 9, height: 9 }}
             />
             <Handle
               type="target"
               id={`${data.label}.${col}`}
               position={Position.Left}
-              style={{ left: -10, background: "#0B2132", width: 10, height: 10 }}
+              style={{ left: -10, background: "#0B2132", width: 9, height: 9 }}
             />
             {col}
           </div>
@@ -74,7 +77,7 @@ function TableNode({ data, selected }) {
 }
 const nodeTypes = { table: TableNode };
 
-// Botão de auto-ajustar, agora DENTRO do ReactFlow (tem acesso ao contexto)
+// Botão de auto-ajustar, DENTRO do ReactFlow
 function AutoFitButton() {
   const { fitView } = useReactFlow();
   return (
@@ -96,7 +99,7 @@ function AutoFitButton() {
   );
 }
 
-// Conteúdo real da tela, recebe user por props
+// Conteúdo da tela
 function RelacionamentosVisualContent({ user }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -126,13 +129,13 @@ function RelacionamentosVisualContent({ user }) {
           })
         );
 
-        // Distribui as tabelas na tela automaticamente
+        // Distribui as tabelas mais compactas
         const initialNodes = tabelas.map((t, idx) => ({
           id: t,
           type: "table",
           data: { label: t, columns: colunasPorTabela[t] },
-          position: { x: 120 + 260 * (idx % 4), y: 60 + 220 * Math.floor(idx / 4) },
-          style: { minWidth: 220, minHeight: 90 },
+          position: { x: 80 + 200 * (idx % 6), y: 30 + 120 * Math.floor(idx / 6) },
+          style: { minWidth: 120, minHeight: 28 },
           resizable: true,
         }));
 
@@ -162,7 +165,6 @@ function RelacionamentosVisualContent({ user }) {
         });
         setLoading(false);
       });
-    // eslint-disable-next-line
   }, [user]);
 
   // Criar novo relacionamento ao conectar
@@ -257,7 +259,7 @@ function RelacionamentosVisualContent({ user }) {
         >
           <MiniMap nodeColor={() => "#2284a1"} />
           <Controls />
-          <Background color="#e4f3fa" gap={18} />
+          <Background color="#dde7f2" gap={32} />
           <AutoFitButton />
         </ReactFlow>
       )}
