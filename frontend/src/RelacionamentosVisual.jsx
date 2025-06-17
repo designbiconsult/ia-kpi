@@ -15,7 +15,6 @@ import "reactflow/dist/style.css";
 import { api } from "./api";
 import { Alert, Snackbar, Box, Button, CircularProgress } from "@mui/material";
 
-// Tabela customizada com handles cobrindo toda linha
 function TableNode({ data, selected }) {
   return (
     <div
@@ -124,7 +123,6 @@ function TableNode({ data, selected }) {
 }
 const nodeTypes = { table: TableNode };
 
-// Botão auto-ajustar
 function AutoFitButton() {
   const { fitView, getNodes } = useReactFlow();
   return (
@@ -155,7 +153,6 @@ function RelacionamentosVisualContent({ user }) {
   const [msg, setMsg] = useState({ open: false, text: "", severity: "success" });
   const [loading, setLoading] = useState(true);
 
-  // Para autoajustar ao abrir:
   const { fitView, getNodes } = useReactFlow();
 
   useEffect(() => {
@@ -280,14 +277,13 @@ function RelacionamentosVisualContent({ user }) {
   );
 
   return (
-    // AQUI está o segredo do extent funcionar!
     <Box
       sx={{
         height: "calc(100vh - 60px)",
         width: "100vw",
         background: "#f8fafd",
         position: "relative",
-        overflow: "hidden" // ESSENCIAL!
+        overflow: "hidden"
       }}
     >
       {loading && (
@@ -316,6 +312,7 @@ function RelacionamentosVisualContent({ user }) {
           defaultEdgeOptions={{ type: "smoothstep" }}
           proOptions={{ hideAttribution: true }}
           extent="parent"
+          nodeDragBounds={{ left: 0, top: 0 }}
         >
           <MiniMap nodeColor={() => "#2284a1"} />
           <Controls />
