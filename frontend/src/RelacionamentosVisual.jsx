@@ -8,13 +8,14 @@ import ReactFlow, {
   Handle,
   Position,
   NodeResizer,
-  useReactFlow
+  useReactFlow,
+  ReactFlowProvider
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { api } from "./api";
 import { Alert, Snackbar, Box, Button, CircularProgress } from "@mui/material";
 
-// Node customizado com redimensionamento (NodeResizer)
+// Componente da tabela customizada, com resize:
 function TableNode({ data, selected }) {
   return (
     <div
@@ -71,10 +72,9 @@ function TableNode({ data, selected }) {
     </div>
   );
 }
-
 const nodeTypes = { table: TableNode };
 
-// BOTÃO DE AUTO AJUSTE DENTRO DO REACT FLOW
+// Botão de auto-ajustar, agora DENTRO do ReactFlow (tem acesso ao contexto)
 function AutoFitButton() {
   const { fitView } = useReactFlow();
   return (
@@ -96,7 +96,8 @@ function AutoFitButton() {
   );
 }
 
-export default function RelacionamentosVisual({ user }) {
+// Conteúdo real da tela, recebe user por props
+function RelacionamentosVisualContent({ user }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [msg, setMsg] = useState({ open: false, text: "", severity: "success" });
@@ -125,7 +126,7 @@ export default function RelacionamentosVisual({ user }) {
           })
         );
 
-        // Distribui as tabelas na tela automaticamente, já com redimensionamento ativado
+        // Distribui as tabelas na tela automaticamente
         const initialNodes = tabelas.map((t, idx) => ({
           id: t,
           type: "table",
@@ -164,10 +165,9 @@ export default function RelacionamentosVisual({ user }) {
     // eslint-disable-next-line
   }, [user]);
 
-  // Ao criar uma nova conexão com o mouse
+  // Criar novo relacionamento ao conectar
   const onConnect = useCallback(
     async (params) => {
-      // sourceHandle/targetHandle = "tabela.coluna"
       const [tabela_origem, coluna_origem] = params.sourceHandle.split(".");
       const [tabela_destino, coluna_destino] = params.targetHandle.split(".");
 
@@ -183,7 +183,6 @@ export default function RelacionamentosVisual({ user }) {
           senha: user.senha
         });
         setMsg({ open: true, text: "Relacionamento criado!", severity: "success" });
-        // Refaz edges (recarrega do backend)
         setLoading(true);
         const relRes = await api.get("/relacionamentos", {
           params: { empresa_id: user.empresa_id, email: user.email, senha: user.senha }
@@ -209,7 +208,7 @@ export default function RelacionamentosVisual({ user }) {
     [user]
   );
 
-  // Remover relacionamento (ao clicar na linha)
+  // Remover relacionamento ao clicar na linha
   const onEdgeClick = useCallback(
     (event, edge) => {
       event.stopPropagation();
@@ -273,5 +272,14 @@ export default function RelacionamentosVisual({ user }) {
         </Alert>
       </Snackbar>
     </Box>
+  );
+}
+
+// **PROVIDER** para o contexto do React Flow funcionar!
+export default function RelacionamentosVisual(props) {
+  return (
+    <ReactFlowProvider>
+      <RelacionamentosVisualContent {...props} />
+    </ReactFlowProvider>
   );
 }
