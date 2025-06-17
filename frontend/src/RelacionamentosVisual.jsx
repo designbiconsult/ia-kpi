@@ -96,10 +96,9 @@ function RelacionamentosBI({ user }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [loading, setLoading] = useState(true);
 
-  // Salvar o último width dos nodes (para impedir expansão para a esquerda)
-  const nodeWidths = useRef({}); // id -> width
+  // Track last valid width for each node
+  const lastWidthRef = useRef({});
 
-  // Custom onNodesChange: impede mover/escalar para a esquerda
   const onNodesChangeFixed = (changes) => {
     setNodes((nds) =>
       nds.map((node) => {
@@ -116,22 +115,20 @@ function RelacionamentosBI({ user }) {
           y = Math.max(0, change.position.y);
         }
 
-        // RESIZE: se em X=0, só pode crescer para direita
+        // RESIZE: se x == 0, não permite width aumentar além do atual (só pra direita)
         if (change.type === "dimensions" && node.selected) {
-          // Pega último width salvo ou atual
-          const prevWidth = nodeWidths.current[node.id] || width;
-          if (x === 0 && change.dimensions?.width && change.dimensions.width !== width) {
-            // Só permite aumentar para a direita (mantém width ou aumenta)
-            width = Math.max(change.dimensions.width, prevWidth, minNodeWidth);
+          const prevWidth = lastWidthRef.current[node.id] || width;
+          if (x === 0 && change.dimensions?.width) {
+            // só aceita resize pra direita (aumenta só pra direita)
+            width = Math.max(minNodeWidth, Math.min(change.dimensions.width, prevWidth));
           } else if (change.dimensions?.width) {
             width = Math.max(change.dimensions.width, minNodeWidth);
           }
-          // Altura normal
           if (change.dimensions?.height) {
             height = Math.max(change.dimensions.height, minNodeHeight);
           }
-          // Salva o último width (pra X=0)
-          nodeWidths.current[node.id] = width;
+          // Salva o último width válido
+          lastWidthRef.current[node.id] = width;
         }
 
         return {
@@ -182,8 +179,8 @@ function RelacionamentosBI({ user }) {
           };
         });
 
-        // Inicializa nodeWidths para cada tabela
-        initialNodes.forEach(node => { nodeWidths.current[node.id] = node.width || minNodeWidth });
+        // Inicializa widths
+        initialNodes.forEach(node => { lastWidthRef.current[node.id] = node.width || minNodeWidth });
         setNodes(initialNodes);
         setLoading(false);
       });
