@@ -3,15 +3,14 @@ import { Stage, Layer, Rect, Group, Text } from "react-konva";
 import CropFreeIcon from "@mui/icons-material/CropFree";
 import IconButton from "@mui/material/IconButton";
 
-// Largura exata do Sidebar (ajuste caso seu Drawer tenha outra largura)
+// Sidebar width fixo
 const SIDEBAR_WIDTH = 230;
 
 const MIN_NODE_WIDTH = 150;
-const MAX_NODE_WIDTH = 900;
+const MAX_NODE_WIDTH = 750;
 const NODE_HEIGHT_BASE = 38;
 const NODE_FIELD_HEIGHT = 30;
 
-// Tabelas fake (troque por suas tabelas reais)
 const tabelasFake = [
   { id: "Pedidos", campos: ["ID", "Data", "ClienteID", "Valor", "Status"] },
   { id: "Clientes", campos: ["ID", "Nome", "Cidade", "UF"] },
@@ -20,10 +19,10 @@ const tabelasFake = [
 ];
 
 function getInitNodes(viewW) {
-  // Cola as tabelas na borda azul sem espaço inútil
+  // Organiza em 2 colunas, colado ao quadro azul
   return tabelasFake.map((t, idx) => ({
     id: t.id,
-    x: SIDEBAR_WIDTH + 7 + (idx % 2) * 250, // só 7px de margem pra não grudar!
+    x: SIDEBAR_WIDTH + 16 + (idx % 2) * 270,
     y: 80 + Math.floor(idx / 2) * 210,
     width: 200,
     height: NODE_HEIGHT_BASE + t.campos.length * NODE_FIELD_HEIGHT,
@@ -48,15 +47,15 @@ export default function RelacionamentosVisual() {
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  // Arraste: só permite para a direita até o fim, nunca ultrapassa a borda esquerda
+  // Arraste: nunca passa da borda azul, nem sai pra direita
   const handleDragMove = (idx, e) => {
     let x = e.target.x();
     let y = e.target.y();
     const n = nodes[idx];
-    // Limite ESQUERDO: borda azul
-    x = Math.max(SIDEBAR_WIDTH, x);
-    // Limite DIREITO: não deixa sair da área visível
-    x = Math.min(canvasW - n.width - 4, x);
+    // Limite esquerdo = borda azul
+    x = Math.max(SIDEBAR_WIDTH + 6, x);
+    // Limite direito: nunca ultrapassa o canvas
+    x = Math.min(canvasW - n.width - 8, x);
     y = Math.max(0, Math.min(canvasH - n.height, y));
     e.target.x(x);
     e.target.y(y);
@@ -65,7 +64,7 @@ export default function RelacionamentosVisual() {
   const handleDragStart = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: true } : n));
   const handleDragEnd = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: false } : n));
 
-  // Só permite expandir para a DIREITA até o limite da borda azul (direita)
+  // Só permite expandir para a DIREITA até a borda azul da direita
   const handleResizeStart = (idx) => {
     resizingNode.current = idx;
     setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isResizing: true } : n));
@@ -76,8 +75,8 @@ export default function RelacionamentosVisual() {
     const n = nodes[idx];
     let mouseX = e.target.getStage().getPointerPosition().x;
     let newWidth = Math.max(MIN_NODE_WIDTH, mouseX - n.x);
-    // Limite: até a borda azul da direita
-    const maxWidth = (canvasW - n.x - 12); // buffer
+    // Limite direito: até a borda azul!
+    const maxWidth = (canvasW - n.x - 14);
     newWidth = Math.min(newWidth, maxWidth, MAX_NODE_WIDTH);
     setNodes((nds) => nds.map((node, i) => i === idx ? { ...node, width: newWidth } : node));
   };
@@ -86,7 +85,7 @@ export default function RelacionamentosVisual() {
     setNodes((nds) => nds.map((n) => ({ ...n, isResizing: false })));
   };
 
-  // Botão para ajustar viewport (não mexe nas tabelas!)
+  // Botão para ajustar viewport SEM centralizar tabelas!
   const stageRef = useRef();
   const handleFitView = () => {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -96,18 +95,18 @@ export default function RelacionamentosVisual() {
       maxX = Math.max(maxX, n.x + n.width);
       maxY = Math.max(maxY, n.y + n.height);
     });
-    const pad = 32;
-    minX = Math.max(minX - pad, SIDEBAR_WIDTH);
+    const pad = 30;
+    minX = Math.max(minX - pad, SIDEBAR_WIDTH + 4);
     minY = Math.max(minY - pad, 0);
     maxX = Math.min(maxX + pad, canvasW);
     maxY = Math.min(maxY + pad, canvasH);
     const viewW = maxX - minX;
     const viewH = maxY - minY;
-    const scaleX = (canvasW - SIDEBAR_WIDTH) / viewW;
+    const scaleX = (canvasW - SIDEBAR_WIDTH - 8) / viewW;
     const scaleY = canvasH / viewH;
     const scale = Math.min(scaleX, scaleY, 1.0);
     stageRef.current?.to({
-      x: -minX * scale + SIDEBAR_WIDTH,
+      x: -minX * scale + SIDEBAR_WIDTH + 6,
       y: -minY * scale,
       scaleX: scale,
       scaleY: scale,
@@ -121,10 +120,12 @@ export default function RelacionamentosVisual() {
       background: "#f8fafd",
       margin: 0, padding: 0, overflow: "hidden"
     }}>
-      {/* Botão de ajuste sempre visível, colado à borda azul */}
+      {/* Botão fica SEMPRE visível, colado na borda azul! */}
       <div style={{
         position: "absolute",
-        top: 18, left: SIDEBAR_WIDTH + 14, zIndex: 10
+        top: 18,
+        left: SIDEBAR_WIDTH + 14,
+        zIndex: 10
       }}>
         <IconButton
           style={{
@@ -223,7 +224,7 @@ export default function RelacionamentosVisual() {
       </Stage>
       {/* Título fixo */}
       <div style={{
-        position: "absolute", top: 12, left: SIDEBAR_WIDTH + 70, fontWeight: 700,
+        position: "absolute", top: 12, left: SIDEBAR_WIDTH + 54, fontWeight: 700,
         fontSize: 20, color: "#1976d2", letterSpacing: 0.25, zIndex: 8
       }}>
         Relacionamentos Visual (Power BI Style)
