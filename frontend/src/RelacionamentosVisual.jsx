@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import ReactFlow, {
   ReactFlowProvider,
   useNodesState,
@@ -9,32 +9,55 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { api } from "./api";
 
-// Parâmetros do visual
+// Parâmetros
 const minNodeWidth = 160;
 const maxNodeWidth = 480;
 const minNodeHeight = 48;
 const canvasWidth = 2200;
 const canvasHeight = 1200;
 
-// Componente customizado Power BI style
+// Componente do node custom com resize só à direita, nunca expande à esquerda
 function TableNode({ id, data, selected, width = minNodeWidth, setNodes }) {
   const nodeRef = useRef(null);
   const [isResizing, setIsResizing] = useState(false);
+  const prevWidth = useRef(width);
 
-  // Resize apenas pelo lado direito
+  useEffect(() => {
+    prevWidth.current = width;
+  }, [width]);
+
   useEffect(() => {
     function onMouseMove(e) {
-      if (!isResizing) return;
-      if (!nodeRef.current) return;
+      if (!isResizing || !nodeRef.current) return;
+
       const rect = nodeRef.current.getBoundingClientRect();
-      let newWidth = Math.max(minNodeWidth, Math.min(maxNodeWidth, e.clientX - rect.left));
-      setNodes((nds) =>
-        nds.map((n) =>
-          n.id === id
-            ? { ...n, width: newWidth }
-            : n
-        )
-      );
+      let nextWidth = Math.max(minNodeWidth, Math.min(maxNodeWidth, e.clientX - rect.left));
+
+      // Só permite crescer para a direita:
+      // - Se mouse está indo para a direita (aumentando)
+      // - OU se está diminuindo (sempre permite)
+      if (nextWidth > prevWidth.current) {
+        // Pode aumentar (só indo para a direita)
+        setNodes((nds) =>
+          nds.map((n) =>
+            n.id === id
+              ? { ...n, width: nextWidth }
+              : n
+          )
+        );
+        prevWidth.current = nextWidth;
+      } else if (nextWidth < prevWidth.current) {
+        // Pode diminuir à vontade (nunca cresce pra esquerda)
+        setNodes((nds) =>
+          nds.map((n) =>
+            n.id === id
+              ? { ...n, width: nextWidth }
+              : n
+          )
+        );
+        prevWidth.current = nextWidth;
+      }
+      // Se mouse está indo pra esquerda e tentaria crescer, ignora!
     }
     function onMouseUp() {
       setIsResizing(false);
@@ -47,6 +70,7 @@ function TableNode({ id, data, selected, width = minNodeWidth, setNodes }) {
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
+    // eslint-disable-next-line
   }, [isResizing, id, setNodes]);
 
   return (
@@ -145,7 +169,7 @@ function TableNode({ id, data, selected, width = minNodeWidth, setNodes }) {
   );
 }
 
-// Wrapper para o node, para ter acesso ao setNodes
+// Wrapper para o node customizado
 const NodeWrapper = (setNodes) => (props) => (
   <TableNode {...props} setNodes={setNodes} />
 );
@@ -155,7 +179,7 @@ function RelacionamentosBI({ user }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [loading, setLoading] = useState(true);
 
-  // Carrega tabelas reais e monta os nodes
+  // Carrega tabelas reais e monta nodes
   useEffect(() => {
     if (!user?.empresa_id) return;
     setLoading(true);
