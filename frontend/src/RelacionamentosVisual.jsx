@@ -22,7 +22,7 @@ function getInitNodes(viewW) {
   // Organiza em 2 colunas, sempre colado ao azul
   return tabelasFake.map((t, idx) => ({
     id: t.id,
-    x: SIDEBAR_WIDTH + (idx % 2) * 290, // Mais perto da borda azul!
+    x: SIDEBAR_WIDTH * 290, // Mais perto da borda azul!
     y: 80 + Math.floor(idx / 2) * 210,
     width: 200,
     height: NODE_HEIGHT_BASE + t.campos.length * NODE_FIELD_HEIGHT,
