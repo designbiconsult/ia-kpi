@@ -1,17 +1,15 @@
 import React, { useRef, useState } from "react";
 import { Stage, Layer, Rect, Group, Text } from "react-konva";
-import CropFreeIcon from "@mui/icons-material/CropFree"; // Botão de autoajuste (opcional)
+import CropFreeIcon from "@mui/icons-material/CropFree";
 import IconButton from "@mui/material/IconButton";
 
-// CONFIGURE AQUI conforme sua sidebar/menu lateral!
-const SIDEBAR_OFFSET = 230; // <<--- LARGURA EXATA DO DRAWER
-const CANVAS_W = 1700 + SIDEBAR_OFFSET; // <<--- Largura total incluindo offset
+// Ajuste conforme a largura REAL do seu Sidebar!
+const SIDEBAR_OFFSET = 230; // Largura do Drawer
+const CANVAS_W = 1500;      // Área ÚTIL (do quadro azul)
 const CANVAS_H = 900;
 const MIN_WIDTH = 140;
-const MAX_WIDTH = 600;
-const MIN_HEIGHT = 45;
+const MAX_WIDTH = 900;      // Um limite razoável, mas não trava direita
 
-// Exemplo de tabelas
 const tabelasFake = [
   { id: "Pedidos", campos: ["ID", "Data", "ClienteID", "Valor", "Status"] },
   { id: "Clientes", campos: ["ID", "Nome", "Cidade", "UF"] },
@@ -25,7 +23,7 @@ function getInitNodes() {
     x: SIDEBAR_OFFSET + 30 + idx * 260,
     y: 80 + (idx % 2) * 220,
     width: 220,
-    height: Math.max(MIN_HEIGHT, 35 + t.campos.length * 28),
+    height: 35 + t.campos.length * 28,
     campos: t.campos,
     isDragging: false,
     isResizing: false,
@@ -36,12 +34,11 @@ export default function RelacionamentosKonva() {
   const [nodes, setNodes] = useState(getInitNodes());
   const resizingNode = useRef(null);
 
-  // Handler de arrasto (trava só na ESQUERDA)
+  // Arrasto: nunca deixa passar para esquerda do quadro, nem sair da direita/base
   const handleDragMove = (idx, e) => {
     let x = e.target.x();
     let y = e.target.y();
-    // Limite ESQUERDA = SIDEBAR, DIREITA = canvas - node.width
-    x = Math.max(SIDEBAR_OFFSET, Math.min(CANVAS_W - nodes[idx].width, x));
+    x = Math.max(SIDEBAR_OFFSET, Math.min(SIDEBAR_OFFSET + CANVAS_W - nodes[idx].width, x));
     y = Math.max(0, Math.min(CANVAS_H - nodes[idx].height, y));
     e.target.x(x);
     e.target.y(y);
@@ -68,7 +65,7 @@ export default function RelacionamentosKonva() {
     );
   };
 
-  // Resize só pela direita (NUNCA deixa crescer para a esquerda, mas direita é ilimitado)
+  // Resize: trava esquerda, MAS deixa crescer até a borda direita
   const handleResizeStart = (idx) => {
     resizingNode.current = idx;
     setNodes((nds) =>
@@ -82,13 +79,10 @@ export default function RelacionamentosKonva() {
     if (resizingNode.current === null) return;
     const idx = resizingNode.current;
     const n = nodes[idx];
-    // x mouse relativo ao node
     let nextWidth = Math.max(MIN_WIDTH, e.evt.layerX - n.x);
-    // Não deixa crescer para a esquerda
-    if (nextWidth < MIN_WIDTH) nextWidth = MIN_WIDTH;
-    // Cresce até o limite do canvas (opcional) - ou retire para deixar livre
-    if (n.x + nextWidth > CANVAS_W) nextWidth = CANVAS_W - n.x - 2;
-    // Não limita a direita a não ser que bata no limite do canvas
+    // Limite máximo: não pode ultrapassar a borda direita do quadro azul
+    if (n.x + nextWidth > SIDEBAR_OFFSET + CANVAS_W)
+      nextWidth = SIDEBAR_OFFSET + CANVAS_W - n.x - 2;
     setNodes((nds) =>
       nds.map((node, i) =>
         i === idx ? { ...node, width: nextWidth } : node
@@ -103,9 +97,8 @@ export default function RelacionamentosKonva() {
     );
   };
 
-  // Autoajuste (centraliza todas as tabelas no espaço do canvas)
+  // Autoajuste (centraliza todas as tabelas no quadro azul)
   const handleAutoFit = () => {
-    // Calcula bounds das tabelas
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     nodes.forEach((n) => {
       minX = Math.min(minX, n.x);
@@ -113,15 +106,12 @@ export default function RelacionamentosKonva() {
       maxX = Math.max(maxX, n.x + n.width);
       maxY = Math.max(maxY, n.y + n.height);
     });
-    // Calcula espaço disponível
-    const areaW = CANVAS_W - SIDEBAR_OFFSET - 60;
+    const areaW = CANVAS_W - 60;
     const areaH = CANVAS_H - 40;
     const widthTabelas = maxX - minX;
     const heightTabelas = maxY - minY;
-    // Padding top/left para centralizar
     const padX = Math.max(SIDEBAR_OFFSET + 20, SIDEBAR_OFFSET + (areaW - widthTabelas) / 2);
     const padY = Math.max(20, (areaH - heightTabelas) / 2);
-    // Move todas para ficarem centralizadas
     setNodes((nds) =>
       nds.map((n) => ({
         ...n,
@@ -134,13 +124,13 @@ export default function RelacionamentosKonva() {
   return (
     <div
       style={{
-        width: CANVAS_W,
+        width: SIDEBAR_OFFSET + CANVAS_W,
         background: "#e4f3fa",
         borderRadius: 24,
         boxShadow: "0 6px 38px #1976d218",
         border: "6px solid #1976d2",
         position: "relative",
-        marginLeft: 0, // encostado na lateral
+        marginLeft: 0,
         overflow: "hidden",
       }}
     >
@@ -160,7 +150,7 @@ export default function RelacionamentosKonva() {
         </IconButton>
       </div>
       <Stage
-        width={CANVAS_W}
+        width={SIDEBAR_OFFSET + CANVAS_W}
         height={CANVAS_H}
         style={{
           borderRadius: 18,
@@ -175,7 +165,7 @@ export default function RelacionamentosKonva() {
           <Rect
             x={SIDEBAR_OFFSET}
             y={0}
-            width={CANVAS_W - SIDEBAR_OFFSET}
+            width={CANVAS_W}
             height={CANVAS_H}
             fill=""
             stroke="#1976d2"
