@@ -3,7 +3,7 @@ import { Stage, Layer, Rect, Group, Text } from "react-konva";
 import CropFreeIcon from "@mui/icons-material/CropFree";
 import IconButton from "@mui/material/IconButton";
 
-// Altere aqui se seu sidebar tiver largura diferente!
+// Sidebar width: ajuste se o seu drawer for diferente!
 const SIDEBAR_WIDTH = 230;
 
 const MIN_NODE_WIDTH = 150;
@@ -11,7 +11,6 @@ const MAX_NODE_WIDTH = 750;
 const NODE_HEIGHT_BASE = 38;
 const NODE_FIELD_HEIGHT = 30;
 
-// Exemplo (depois puxe do backend)
 const tabelasFake = [
   { id: "Pedidos", campos: ["ID", "Data", "ClienteID", "Valor", "Status"] },
   { id: "Clientes", campos: ["ID", "Nome", "Cidade", "UF"] },
@@ -19,13 +18,13 @@ const tabelasFake = [
   { id: "Fornecedores", campos: ["ID", "RazãoSocial", "Cidade"] }
 ];
 
-// Gera nodes espaçados horizontalmente a partir da borda azul (sem espaço sobrando)
 function getInitNodes(viewW) {
+  // Organiza em 2 colunas, sempre colado ao azul
   return tabelasFake.map((t, idx) => ({
     id: t.id,
-    x: SIDEBAR_WIDTH + 32 + (idx % 2) * 350,
-    y: 90 + Math.floor(idx / 2) * 220,
-    width: 210,
+    x: SIDEBAR_WIDTH + 36 + (idx % 2) * 290, // Mais perto da borda azul!
+    y: 80 + Math.floor(idx / 2) * 210,
+    width: 200,
     height: NODE_HEIGHT_BASE + t.campos.length * NODE_FIELD_HEIGHT,
     campos: t.campos,
     isDragging: false,
@@ -34,13 +33,11 @@ function getInitNodes(viewW) {
 }
 
 export default function RelacionamentosVisual() {
-  // Agora 100% dinâmico, sem espaço em branco!
   const [canvasW, setCanvasW] = useState(window.innerWidth);
   const [canvasH, setCanvasH] = useState(window.innerHeight - 2);
   const [nodes, setNodes] = useState(() => getInitNodes(window.innerWidth));
   const resizingNode = useRef(null);
 
-  // Responsividade: ajusta ao redimensionar
   useLayoutEffect(() => {
     const update = () => {
       setCanvasW(window.innerWidth);
@@ -50,15 +47,15 @@ export default function RelacionamentosVisual() {
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  // Arraste: nunca passa da borda azul
+  // Arraste: nunca passa da borda azul, nem sai pra direita
   const handleDragMove = (idx, e) => {
     let x = e.target.x();
     let y = e.target.y();
     const n = nodes[idx];
-    // Limite esquerdo: borda azul (sidebar)
+    // Limite esquerdo = borda azul
     x = Math.max(SIDEBAR_WIDTH, x);
-    // Limite direito: nunca sair do canvas
-    x = Math.min(canvasW - n.width, x);
+    // Limite direito: não deixa passar da borda azul direita
+    x = Math.min(canvasW - n.width - 2, x);
     y = Math.max(0, Math.min(canvasH - n.height, y));
     e.target.x(x);
     e.target.y(y);
@@ -67,7 +64,7 @@ export default function RelacionamentosVisual() {
   const handleDragStart = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: true } : n));
   const handleDragEnd = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: false } : n));
 
-  // Redimensiona para a direita, nunca para esquerda!
+  // Só permite expandir para a DIREITA até a borda azul
   const handleResizeStart = (idx) => {
     resizingNode.current = idx;
     setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isResizing: true } : n));
@@ -78,7 +75,9 @@ export default function RelacionamentosVisual() {
     const n = nodes[idx];
     let mouseX = e.target.getStage().getPointerPosition().x;
     let newWidth = Math.max(MIN_NODE_WIDTH, mouseX - n.x);
-    newWidth = Math.min(newWidth, canvasW - n.x - 8, MAX_NODE_WIDTH);
+    // Limite direito: até a borda azul!
+    const maxWidth = (canvasW - n.x - 16); // 16px de buffer
+    newWidth = Math.min(newWidth, maxWidth, MAX_NODE_WIDTH);
     setNodes((nds) => nds.map((node, i) => i === idx ? { ...node, width: newWidth } : node));
   };
   const handleResizeEnd = () => {
@@ -86,7 +85,7 @@ export default function RelacionamentosVisual() {
     setNodes((nds) => nds.map((n) => ({ ...n, isResizing: false })));
   };
 
-  // Botão "ajustar visualização": coloca tudo no viewport!
+  // Botão para ajustar viewport, SEM centralizar tabelas!
   const stageRef = useRef();
   const handleFitView = () => {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -96,7 +95,7 @@ export default function RelacionamentosVisual() {
       maxX = Math.max(maxX, n.x + n.width);
       maxY = Math.max(maxY, n.y + n.height);
     });
-    const pad = 40;
+    const pad = 30;
     minX = Math.max(minX - pad, SIDEBAR_WIDTH);
     minY = Math.max(minY - pad, 0);
     maxX = Math.min(maxX + pad, canvasW);
@@ -121,22 +120,22 @@ export default function RelacionamentosVisual() {
       background: "#f8fafd",
       margin: 0, padding: 0, overflow: "hidden"
     }}>
-      {/* Botão aparece sempre, colado na borda azul! */}
+      {/* Botão fica SEMPRE visível, colado na borda azul! */}
       <div style={{
         position: "absolute",
-        top: 20, left: SIDEBAR_WIDTH + 16, zIndex: 10
+        top: 18, left: SIDEBAR_WIDTH + 24, zIndex: 10
       }}>
         <IconButton
           style={{
             border: "2px solid #1976d2",
             background: "#fff",
-            borderRadius: 12,
-            boxShadow: "0 2px 10px #1976d233"
+            borderRadius: 11,
+            boxShadow: "0 2px 8px #1976d230"
           }}
           onClick={handleFitView}
           title="Ajustar visualização"
         >
-          <CropFreeIcon sx={{ fontSize: 30, color: "#1976d2" }} />
+          <CropFreeIcon sx={{ fontSize: 26, color: "#1976d2" }} />
         </IconButton>
       </div>
       <Stage
@@ -147,7 +146,7 @@ export default function RelacionamentosVisual() {
         onMouseMove={handleResizeMove}
         onMouseUp={handleResizeEnd}
       >
-        {/* Delimita o espaço azul, SEM margem */}
+        {/* Borda azul delimitadora */}
         <Layer>
           <Rect
             x={SIDEBAR_WIDTH}
@@ -177,16 +176,16 @@ export default function RelacionamentosVisual() {
                 height={node.height}
                 fill="#fff"
                 cornerRadius={13}
-                shadowBlur={node.isDragging ? 16 : 9}
+                shadowBlur={node.isDragging ? 15 : 8}
                 shadowColor="#1976d2"
                 stroke={node.isDragging || node.isResizing ? "#0B2132" : "#2284a1"}
-                strokeWidth={node.isDragging || node.isResizing ? 3.5 : 2}
+                strokeWidth={node.isDragging || node.isResizing ? 3 : 2}
               />
               <Text
                 text={node.id}
-                x={14}
-                y={12}
-                fontSize={18}
+                x={15}
+                y={11}
+                fontSize={16.5}
                 fontStyle="bold"
                 fill="#1976d2"
                 fontFamily="inherit"
@@ -196,23 +195,23 @@ export default function RelacionamentosVisual() {
                 <Text
                   key={campo}
                   text={campo}
-                  x={20}
+                  x={18}
                   y={NODE_HEIGHT_BASE + cidx * (NODE_FIELD_HEIGHT - 2)}
-                  fontSize={15.2}
+                  fontSize={14.5}
                   fill="#444"
                   listening={false}
                   fontFamily="inherit"
                 />
               ))}
-              {/* Handle resize só na DIREITA */}
+              {/* Handle resize: só na DIREITA */}
               <Rect
-                x={node.width - 10}
-                y={9}
-                width={14}
-                height={node.height - 18}
+                x={node.width - 11}
+                y={10}
+                width={15}
+                height={node.height - 20}
                 fill={node.isResizing ? "#0B2132" : "#2284a1"}
                 opacity={0.60}
-                cornerRadius={6}
+                cornerRadius={7}
                 draggable={false}
                 onMouseDown={() => handleResizeStart(idx)}
                 style={{ cursor: "ew-resize" }}
@@ -221,10 +220,10 @@ export default function RelacionamentosVisual() {
           ))}
         </Layer>
       </Stage>
-      {/* Título fixo, colado no topo */}
+      {/* Título fixo */}
       <div style={{
-        position: "absolute", top: 10, left: SIDEBAR_WIDTH + 70, fontWeight: 700,
-        fontSize: 21, color: "#1976d2", letterSpacing: 0.3, zIndex: 8
+        position: "absolute", top: 12, left: SIDEBAR_WIDTH + 70, fontWeight: 700,
+        fontSize: 20, color: "#1976d2", letterSpacing: 0.25, zIndex: 8
       }}>
         Relacionamentos Visual (Power BI Style)
       </div>
