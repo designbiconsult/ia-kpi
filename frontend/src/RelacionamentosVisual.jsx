@@ -200,7 +200,7 @@ export default function RelacionamentosKonva() {
           letterSpacing: 0.5
         }}
       >
-        Relacionamentos Konva (Power BI UX)
+        Relacionamentos
       </div>
     </div>
   );
