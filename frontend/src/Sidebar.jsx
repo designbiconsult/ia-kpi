@@ -58,7 +58,7 @@ export default function Sidebar({ open, setOpen }) {
             key={item.label}
             onClick={() => {
               navigate(item.path);
-              setOpen(false);
+             // setOpen(false);
             }}
           >
             <ListItemIcon>{item.icon}</ListItemIcon>
