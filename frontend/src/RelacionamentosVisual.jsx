@@ -7,7 +7,7 @@ import IconButton from "@mui/material/IconButton";
 const SIDEBAR_WIDTH = 230;
 
 const MIN_NODE_WIDTH = 150;
-const MAX_NODE_WIDTH = 750;
+const MAX_NODE_WIDTH = 950;
 const NODE_HEIGHT_BASE = 38;
 const NODE_FIELD_HEIGHT = 30;
 
@@ -19,10 +19,10 @@ const tabelasFake = [
 ];
 
 function getInitNodes(viewW) {
-  // Organiza em 2 colunas, colado ao quadro azul
+  // Organiza em 2 colunas, COLADO à borda azul/Sidebar
   return tabelasFake.map((t, idx) => ({
     id: t.id,
-    x: SIDEBAR_WIDTH + 16 + (idx % 2) * 270,
+    x: SIDEBAR_WIDTH + 4 + (idx % 2) * 260, // só 4px de margem visual!
     y: 80 + Math.floor(idx / 2) * 210,
     width: 200,
     height: NODE_HEIGHT_BASE + t.campos.length * NODE_FIELD_HEIGHT,
@@ -54,8 +54,8 @@ export default function RelacionamentosVisual() {
     const n = nodes[idx];
     // Limite esquerdo = borda azul
     x = Math.max(SIDEBAR_WIDTH + 6, x);
-    // Limite direito: nunca ultrapassa o canvas
-    x = Math.min(canvasW - n.width - 8, x);
+    // Limite direito: nunca ultrapassa a borda azul da direita
+    x = Math.min(canvasW - n.width - 6, x);
     y = Math.max(0, Math.min(canvasH - n.height, y));
     e.target.x(x);
     e.target.y(y);
@@ -76,7 +76,7 @@ export default function RelacionamentosVisual() {
     let mouseX = e.target.getStage().getPointerPosition().x;
     let newWidth = Math.max(MIN_NODE_WIDTH, mouseX - n.x);
     // Limite direito: até a borda azul!
-    const maxWidth = (canvasW - n.x - 14);
+    const maxWidth = (canvasW - n.x - 6); // 6px de margem visual
     newWidth = Math.min(newWidth, maxWidth, MAX_NODE_WIDTH);
     setNodes((nds) => nds.map((node, i) => i === idx ? { ...node, width: newWidth } : node));
   };
@@ -106,7 +106,7 @@ export default function RelacionamentosVisual() {
     const scaleY = canvasH / viewH;
     const scale = Math.min(scaleX, scaleY, 1.0);
     stageRef.current?.to({
-      x: -minX * scale + SIDEBAR_WIDTH + 6,
+      x: -minX * scale + SIDEBAR_WIDTH + 4,
       y: -minY * scale,
       scaleX: scale,
       scaleY: scale,
@@ -120,11 +120,11 @@ export default function RelacionamentosVisual() {
       background: "#f8fafd",
       margin: 0, padding: 0, overflow: "hidden"
     }}>
-      {/* Botão fica SEMPRE visível, colado na borda azul! */}
+      {/* Botão sempre visível, colado na borda azul */}
       <div style={{
         position: "absolute",
         top: 18,
-        left: SIDEBAR_WIDTH + 14,
+        left: SIDEBAR_WIDTH + 12,
         zIndex: 10
       }}>
         <IconButton
