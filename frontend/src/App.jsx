@@ -110,7 +110,7 @@ export default function App() {
               }
             />
             <Route
-              path="/relacionamentos-visual"
+              path="/relacionamentos"
               element={
                 <PrivateRoute>
                   <Relacionamentos user={user} />
