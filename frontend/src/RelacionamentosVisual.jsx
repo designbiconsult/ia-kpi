@@ -19,10 +19,10 @@ const tabelasFake = [
 ];
 
 function getInitNodes(viewW) {
-  // Organiza em 2 colunas, COLADO à borda azul/Sidebar
+  // COLADO à borda azul
   return tabelasFake.map((t, idx) => ({
     id: t.id,
-    x: SIDEBAR_WIDTH + 4 + (idx % 2) * 260, // só 4px de margem visual!
+    x: SIDEBAR_WIDTH + 6 + (idx % 2) * 260,
     y: 80 + Math.floor(idx / 2) * 210,
     width: 200,
     height: NODE_HEIGHT_BASE + t.campos.length * NODE_FIELD_HEIGHT,
@@ -34,27 +34,28 @@ function getInitNodes(viewW) {
 
 export default function RelacionamentosVisual() {
   const [canvasW, setCanvasW] = useState(window.innerWidth);
-  const [canvasH, setCanvasH] = useState(window.innerHeight - 2);
+  const [canvasH, setCanvasH] = useState(window.innerHeight);
   const [nodes, setNodes] = useState(() => getInitNodes(window.innerWidth));
   const resizingNode = useRef(null);
 
+  // Atualiza tamanho ao redimensionar a janela
   useLayoutEffect(() => {
     const update = () => {
       setCanvasW(window.innerWidth);
-      setCanvasH(window.innerHeight - 2);
+      setCanvasH(window.innerHeight);
     };
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  // Arraste: nunca passa da borda azul, nem sai pra direita
+  // Arraste com limite COLADO à borda azul (esquerda e direita)
   const handleDragMove = (idx, e) => {
     let x = e.target.x();
     let y = e.target.y();
     const n = nodes[idx];
     // Limite esquerdo = borda azul
     x = Math.max(SIDEBAR_WIDTH + 6, x);
-    // Limite direito: nunca ultrapassa a borda azul da direita
+    // Limite direito: borda azul da direita
     x = Math.min(canvasW - n.width - 6, x);
     y = Math.max(0, Math.min(canvasH - n.height, y));
     e.target.x(x);
@@ -64,7 +65,7 @@ export default function RelacionamentosVisual() {
   const handleDragStart = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: true } : n));
   const handleDragEnd = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: false } : n));
 
-  // Só permite expandir para a DIREITA até a borda azul da direita
+  // Resize só para a DIREITA até a borda azul direita
   const handleResizeStart = (idx) => {
     resizingNode.current = idx;
     setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isResizing: true } : n));
@@ -75,8 +76,8 @@ export default function RelacionamentosVisual() {
     const n = nodes[idx];
     let mouseX = e.target.getStage().getPointerPosition().x;
     let newWidth = Math.max(MIN_NODE_WIDTH, mouseX - n.x);
-    // Limite direito: até a borda azul!
-    const maxWidth = (canvasW - n.x - 6); // 6px de margem visual
+    // Limite: só pode expandir até o final da área azul!
+    const maxWidth = canvasW - n.x - 6; // 6px buffer
     newWidth = Math.min(newWidth, maxWidth, MAX_NODE_WIDTH);
     setNodes((nds) => nds.map((node, i) => i === idx ? { ...node, width: newWidth } : node));
   };
@@ -85,7 +86,7 @@ export default function RelacionamentosVisual() {
     setNodes((nds) => nds.map((n) => ({ ...n, isResizing: false })));
   };
 
-  // Botão para ajustar viewport SEM centralizar tabelas!
+  // Botão para ajustar viewport, SEM centralizar tabelas!
   const stageRef = useRef();
   const handleFitView = () => {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -96,7 +97,7 @@ export default function RelacionamentosVisual() {
       maxY = Math.max(maxY, n.y + n.height);
     });
     const pad = 30;
-    minX = Math.max(minX - pad, SIDEBAR_WIDTH + 4);
+    minX = Math.max(minX - pad, SIDEBAR_WIDTH + 6);
     minY = Math.max(minY - pad, 0);
     maxX = Math.min(maxX + pad, canvasW);
     maxY = Math.min(maxY + pad, canvasH);
@@ -106,11 +107,11 @@ export default function RelacionamentosVisual() {
     const scaleY = canvasH / viewH;
     const scale = Math.min(scaleX, scaleY, 1.0);
     stageRef.current?.to({
-      x: -minX * scale + SIDEBAR_WIDTH + 4,
+      x: -minX * scale + SIDEBAR_WIDTH + 6,
       y: -minY * scale,
       scaleX: scale,
       scaleY: scale,
-      duration: 0.2
+      duration: 0.22
     });
   };
 
@@ -124,7 +125,7 @@ export default function RelacionamentosVisual() {
       <div style={{
         position: "absolute",
         top: 18,
-        left: SIDEBAR_WIDTH + 12,
+        left: SIDEBAR_WIDTH + 14,
         zIndex: 10
       }}>
         <IconButton
@@ -224,7 +225,7 @@ export default function RelacionamentosVisual() {
       </Stage>
       {/* Título fixo */}
       <div style={{
-        position: "absolute", top: 12, left: SIDEBAR_WIDTH + 54, fontWeight: 700,
+        position: "absolute", top: 12, left: SIDEBAR_WIDTH + 52, fontWeight: 700,
         fontSize: 20, color: "#1976d2", letterSpacing: 0.25, zIndex: 8
       }}>
         Relacionamentos Visual (Power BI Style)
