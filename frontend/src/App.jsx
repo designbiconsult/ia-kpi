@@ -69,7 +69,7 @@ export default function App() {
               elevation={0}
               sx={{
                 width: user && sidebarOpen ? `calc(100% - ${drawerWidth}px)` : '100%',
-                ml: user && sidebarOpen ? `${drawerWidth}px` : 0,
+                //ml: user && sidebarOpen ? `${drawerWidth}px` : 0,
                 bgcolor: "#e6f0fa",
                 color: "#0B2132",
                 boxShadow: "none"
