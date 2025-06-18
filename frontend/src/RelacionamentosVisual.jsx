@@ -3,14 +3,16 @@ import { Stage, Layer, Rect, Group, Text } from "react-konva";
 import CropFreeIcon from "@mui/icons-material/CropFree";
 import IconButton from "@mui/material/IconButton";
 
-// Sidebar width: ajuste se o seu drawer for diferente!
+// Largura do Sidebar real
 const SIDEBAR_WIDTH = 230;
+const CANVAS_MARGIN = 0; // Agora sem margem extra
 
 const MIN_NODE_WIDTH = 150;
 const MAX_NODE_WIDTH = 750;
 const NODE_HEIGHT_BASE = 38;
 const NODE_FIELD_HEIGHT = 30;
 
+// Simule as tabelas reais!
 const tabelasFake = [
   { id: "Pedidos", campos: ["ID", "Data", "ClienteID", "Valor", "Status"] },
   { id: "Clientes", campos: ["ID", "Nome", "Cidade", "UF"] },
@@ -19,10 +21,11 @@ const tabelasFake = [
 ];
 
 function getInitNodes(viewW) {
-  // Organiza em 2 colunas, sempre colado ao azul
+  // Encoste as tabelas na borda azul!
+  const padding = 24; // padding entre a linha azul e as tabelas
   return tabelasFake.map((t, idx) => ({
     id: t.id,
-    x: SIDEBAR_WIDTH * 290, // Mais perto da borda azul!
+    x: SIDEBAR_WIDTH + padding + (idx % 2) * 260,
     y: 80 + Math.floor(idx / 2) * 210,
     width: 200,
     height: NODE_HEIGHT_BASE + t.campos.length * NODE_FIELD_HEIGHT,
@@ -47,20 +50,22 @@ export default function RelacionamentosVisual() {
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  // Arraste: nunca passa da borda azul, nem sai pra direita
+  // Arraste: NÃO deixa passar da borda azul esquerda nem sumir pra direita
   const handleDragMove = (idx, e) => {
     let x = e.target.x();
     let y = e.target.y();
     const n = nodes[idx];
     // Limite esquerdo = borda azul
-    x = Math.max(SIDEBAR_WIDTH, x);
+    const minX = SIDEBAR_WIDTH + 6; // 6px dentro da linha azul
     // Limite direito: não deixa passar da borda azul direita
-    x = Math.min(canvasW - n.width - 2, x);
+    const maxX = canvasW - n.width - 2;
+    x = Math.max(minX, Math.min(x, maxX));
     y = Math.max(0, Math.min(canvasH - n.height, y));
     e.target.x(x);
     e.target.y(y);
     setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, x, y } : n));
   };
+
   const handleDragStart = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: true } : n));
   const handleDragEnd = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: false } : n));
 
@@ -75,9 +80,11 @@ export default function RelacionamentosVisual() {
     const n = nodes[idx];
     let mouseX = e.target.getStage().getPointerPosition().x;
     let newWidth = Math.max(MIN_NODE_WIDTH, mouseX - n.x);
-    // Limite direito: até a borda azul!
-    const maxWidth = (canvasW - n.x - 16); // 16px de buffer
+
+    // Limite direito: até o final do canvas (linha azul)
+    const maxWidth = (canvasW - n.x - 12); // buffer de 12px
     newWidth = Math.min(newWidth, maxWidth, MAX_NODE_WIDTH);
+
     setNodes((nds) => nds.map((node, i) => i === idx ? { ...node, width: newWidth } : node));
   };
   const handleResizeEnd = () => {
@@ -95,7 +102,7 @@ export default function RelacionamentosVisual() {
       maxX = Math.max(maxX, n.x + n.width);
       maxY = Math.max(maxY, n.y + n.height);
     });
-    const pad = 30;
+    const pad = 20;
     minX = Math.max(minX - pad, SIDEBAR_WIDTH);
     minY = Math.max(minY - pad, 0);
     maxX = Math.min(maxX + pad, canvasW);
@@ -120,10 +127,12 @@ export default function RelacionamentosVisual() {
       background: "#f8fafd",
       margin: 0, padding: 0, overflow: "hidden"
     }}>
-      {/* Botão fica SEMPRE visível, colado na borda azul! */}
+      {/* Botão colado na borda azul! */}
       <div style={{
         position: "absolute",
-        top: 18, left: SIDEBAR_WIDTH + 24, zIndex: 10
+        top: 18,
+        left: SIDEBAR_WIDTH + 15,
+        zIndex: 10
       }}>
         <IconButton
           style={{
