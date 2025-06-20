@@ -13,7 +13,6 @@ import { IconButton, Toolbar, AppBar, Box, Typography, Button } from "@mui/mater
 import RelacionamentosVisual from "./RelacionamentosVisual";
 import TestReactFlow from "./TestReactFlow";
 
-
 const drawerWidth = 230;
 
 export default function App() {
@@ -59,7 +58,9 @@ export default function App() {
             transition: 'margin 0.2s',
             marginLeft: user && sidebarOpen ? `${drawerWidth}px` : 0,
             minHeight: '100vh',
-            bgcolor: "#f8fafd"
+            bgcolor: "#f8fafd",
+            p: 0,       // padding zero
+            m: 0        // margin zero
           }}
         >
           {/* Topbar fixa */}
@@ -101,7 +102,7 @@ export default function App() {
           
           {/* Rotas */}
           <Routes>
-           <Route
+            <Route
               path="/sincronizar"
               element={
                 <PrivateRoute>
@@ -159,7 +160,7 @@ export default function App() {
                 <PrivateRoute>
                   <RelacionamentosVisual user={user} />
                 </PrivateRoute>
-               }
+              }
             />
             <Route
               path="*"
