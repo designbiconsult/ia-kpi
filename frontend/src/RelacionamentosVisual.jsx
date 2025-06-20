@@ -73,8 +73,6 @@ export default function RelacionamentosVisual() {
   newWidth = Math.min(newWidth, MAX_NODE_WIDTH);
   setNodes((nds) => nds.map((node, i) => i === idx ? { ...node, width: newWidth } : node));
 };
-
-  };
   const handleResizeEnd = () => {
     resizingNode.current = null;
     setNodes((nds) => nds.map((n) => ({ ...n, isResizing: false })));
