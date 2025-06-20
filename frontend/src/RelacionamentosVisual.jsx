@@ -64,13 +64,16 @@ export default function RelacionamentosVisual() {
     setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isResizing: true } : n));
   };
   const handleResizeMove = (e) => {
-    if (resizingNode.current === null) return;
-    const idx = resizingNode.current;
-    const n = nodes[idx];
-    let mouseX = e.target.getStage().getPointerPosition().x;
-    let newWidth = Math.max(MIN_NODE_WIDTH, mouseX - n.x);
-    newWidth = Math.min(newWidth, MAX_NODE_WIDTH);
-    setNodes((nds) => nds.map((node, i) => i === idx ? { ...node, width: newWidth } : node));
+  if (resizingNode.current === null) return;
+  const idx = resizingNode.current;
+  const n = nodes[idx];
+  let mouseX = e.target.getStage().getPointerPosition().x;
+  let newWidth = Math.max(MIN_NODE_WIDTH, mouseX - n.x);
+  // Só limita pelo máximo permitido, sem se importar com o tamanho do canvas!
+  newWidth = Math.min(newWidth, MAX_NODE_WIDTH);
+  setNodes((nds) => nds.map((node, i) => i === idx ? { ...node, width: newWidth } : node));
+};
+
   };
   const handleResizeEnd = () => {
     resizingNode.current = null;
