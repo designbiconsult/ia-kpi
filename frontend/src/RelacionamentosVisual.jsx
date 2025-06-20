@@ -3,7 +3,7 @@ import { Stage, Layer, Rect, Group, Text } from "react-konva";
 import CropFreeIcon from "@mui/icons-material/CropFree";
 import IconButton from "@mui/material/IconButton";
 
-// Largura do sidebar é ignorada aqui
+// Não some SIDEBAR_WIDTH, pois o App já faz isso!
 const MIN_NODE_WIDTH = 150;
 const MAX_NODE_WIDTH = 950;
 const NODE_HEIGHT_BASE = 38;
@@ -17,10 +17,10 @@ const tabelasFake = [
 ];
 
 function getInitNodes() {
-  // Coluna inicial bem próxima da borda esquerda (borda azul)
+  // Agora x começa em 0, encostado na borda azul/Sidebar!
   return tabelasFake.map((t, idx) => ({
     id: t.id,
-    x: 8 + (idx % 2) * 260,
+    x: 4 + (idx % 2) * 260, // 4px só de margem visual da borda
     y: 80 + Math.floor(idx / 2) * 210,
     width: 200,
     height: NODE_HEIGHT_BASE + t.campos.length * NODE_FIELD_HEIGHT,
@@ -45,15 +45,15 @@ export default function RelacionamentosVisual() {
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  // Limite: borda azul sempre em x=0, então nunca deixa arrastar para x<8
+  // Arraste: nunca passa da borda azul (esquerda = 0), nem sai pra direita
   const handleDragMove = (idx, e) => {
     let x = e.target.x();
     let y = e.target.y();
     const n = nodes[idx];
-    // Limite esquerdo = 8px da tela (borda azul)
-    x = Math.max(8, x);
-    // Limite direito: não deixa passar da borda azul direita
-    x = Math.min(canvasW - n.width - 8, x);
+    // Limite esquerdo = borda azul (x=0)
+    x = Math.max(4, x);
+    // Limite direito: nunca ultrapassa a borda azul da direita
+    x = Math.min(canvasW - n.width - 6, x);
     y = Math.max(0, Math.min(canvasH - n.height, y));
     e.target.x(x);
     e.target.y(y);
@@ -62,7 +62,7 @@ export default function RelacionamentosVisual() {
   const handleDragStart = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: true } : n));
   const handleDragEnd = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: false } : n));
 
-  // Só permite expandir para a DIREITA até a borda azul direita
+  // Só permite expandir para a DIREITA até a borda azul da direita
   const handleResizeStart = (idx) => {
     resizingNode.current = idx;
     setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isResizing: true } : n));
@@ -74,7 +74,7 @@ export default function RelacionamentosVisual() {
     let mouseX = e.target.getStage().getPointerPosition().x;
     let newWidth = Math.max(MIN_NODE_WIDTH, mouseX - n.x);
     // Limite direito: até a borda azul!
-    const maxWidth = (canvasW - n.x - 8); // 8px da borda azul da direita
+    const maxWidth = (canvasW - n.x - 6); // 6px de margem visual
     newWidth = Math.min(newWidth, maxWidth, MAX_NODE_WIDTH);
     setNodes((nds) => nds.map((node, i) => i === idx ? { ...node, width: newWidth } : node));
   };
@@ -94,17 +94,17 @@ export default function RelacionamentosVisual() {
       maxY = Math.max(maxY, n.y + n.height);
     });
     const pad = 30;
-    minX = Math.max(minX - pad, 8);
+    minX = Math.max(minX - pad, 0);
     minY = Math.max(minY - pad, 0);
     maxX = Math.min(maxX + pad, canvasW);
     maxY = Math.min(maxY + pad, canvasH);
     const viewW = maxX - minX;
     const viewH = maxY - minY;
-    const scaleX = (canvasW - 16) / viewW;
+    const scaleX = canvasW / viewW;
     const scaleY = canvasH / viewH;
     const scale = Math.min(scaleX, scaleY, 1.0);
     stageRef.current?.to({
-      x: -minX * scale + 8,
+      x: -minX * scale,
       y: -minY * scale,
       scaleX: scale,
       scaleY: scale,
@@ -122,7 +122,7 @@ export default function RelacionamentosVisual() {
       <div style={{
         position: "absolute",
         top: 18,
-        left: 22,
+        left: 18,
         zIndex: 10
       }}>
         <IconButton
@@ -222,7 +222,7 @@ export default function RelacionamentosVisual() {
       </Stage>
       {/* Título fixo */}
       <div style={{
-        position: "absolute", top: 12, left: 60, fontWeight: 700,
+        position: "absolute", top: 12, left: 54, fontWeight: 700,
         fontSize: 20, color: "#1976d2", letterSpacing: 0.25, zIndex: 8
       }}>
         Relacionamentos Visual (Power BI Style)
