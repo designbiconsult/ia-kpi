@@ -3,6 +3,9 @@ import { Stage, Layer, Rect, Group, Text } from "react-konva";
 import CropFreeIcon from "@mui/icons-material/CropFree";
 import IconButton from "@mui/material/IconButton";
 
+// Sidebar width fixo (tem que bater com o App!)
+const SIDEBAR_WIDTH = 230;
+
 const MIN_NODE_WIDTH = 150;
 const MAX_NODE_WIDTH = 950;
 const NODE_HEIGHT_BASE = 38;
@@ -16,9 +19,10 @@ const tabelasFake = [
 ];
 
 function getInitNodes() {
+  // AGORA x: 0 = colado na borda azul, sem margem!
   return tabelasFake.map((t, idx) => ({
     id: t.id,
-    x: 4 + (idx % 2) * 260,
+    x: (idx % 2) * 260,
     y: 80 + Math.floor(idx / 2) * 210,
     width: 200,
     height: NODE_HEIGHT_BASE + t.campos.length * NODE_FIELD_HEIGHT,
@@ -29,27 +33,27 @@ function getInitNodes() {
 }
 
 export default function RelacionamentosVisual() {
-  const [canvasW, setCanvasW] = useState(window.innerWidth);
+  const [canvasW, setCanvasW] = useState(window.innerWidth - SIDEBAR_WIDTH);
   const [canvasH, setCanvasH] = useState(window.innerHeight - 2);
   const [nodes, setNodes] = useState(() => getInitNodes());
   const resizingNode = useRef(null);
 
   useLayoutEffect(() => {
     const update = () => {
-      setCanvasW(window.innerWidth);
+      setCanvasW(window.innerWidth - SIDEBAR_WIDTH);
       setCanvasH(window.innerHeight - 2);
     };
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  // Arraste: nunca passa da borda esquerda (x=0)
+  // Arraste: esquerda MIN 0, direita não passa do canvas
   const handleDragMove = (idx, e) => {
     let x = e.target.x();
     let y = e.target.y();
     const n = nodes[idx];
-    x = Math.max(4, x); // margem esquerda
-    // Agora sem limite para direita
+    x = Math.max(0, x);
+    x = Math.min(canvasW - n.width - 2, x);
     y = Math.max(0, Math.min(canvasH - n.height, y));
     e.target.x(x);
     e.target.y(y);
@@ -58,27 +62,26 @@ export default function RelacionamentosVisual() {
   const handleDragStart = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: true } : n));
   const handleDragEnd = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: false } : n));
 
-  // Permite expandir para a direita sem limite visual (até o max)
+  // Resize só para a direita, até MAX_NODE_WIDTH
   const handleResizeStart = (idx) => {
     resizingNode.current = idx;
     setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isResizing: true } : n));
   };
   const handleResizeMove = (e) => {
-  if (resizingNode.current === null) return;
-  const idx = resizingNode.current;
-  const n = nodes[idx];
-  let mouseX = e.target.getStage().getPointerPosition().x;
-  let newWidth = Math.max(MIN_NODE_WIDTH, mouseX - n.x);
-  // Só limita pelo máximo permitido, sem se importar com o tamanho do canvas!
-  newWidth = Math.min(newWidth, MAX_NODE_WIDTH);
-  setNodes((nds) => nds.map((node, i) => i === idx ? { ...node, width: newWidth } : node));
-};
+    if (resizingNode.current === null) return;
+    const idx = resizingNode.current;
+    const n = nodes[idx];
+    let mouseX = e.target.getStage().getPointerPosition().x;
+    let newWidth = Math.max(MIN_NODE_WIDTH, mouseX - n.x);
+    newWidth = Math.min(newWidth, MAX_NODE_WIDTH);
+    setNodes((nds) => nds.map((node, i) => i === idx ? { ...node, width: newWidth } : node));
+  };
   const handleResizeEnd = () => {
     resizingNode.current = null;
     setNodes((nds) => nds.map((n) => ({ ...n, isResizing: false })));
   };
 
-  // Botão para ajustar viewport SEM centralizar tabelas!
+  // Fit view
   const stageRef = useRef();
   const handleFitView = () => {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -113,11 +116,11 @@ export default function RelacionamentosVisual() {
       background: "#f8fafd",
       margin: 0, padding: 0, overflow: "hidden"
     }}>
-      {/* Botão sempre visível */}
+      {/* Botão colado à borda azul */}
       <div style={{
         position: "absolute",
         top: 18,
-        left: 18,
+        left: SIDEBAR_WIDTH + 18,
         zIndex: 10
       }}>
         <IconButton
@@ -135,16 +138,27 @@ export default function RelacionamentosVisual() {
       </div>
       <Stage
         ref={stageRef}
+        x={SIDEBAR_WIDTH}
         width={canvasW}
         height={canvasH}
         style={{ background: "#f8fafd", margin: 0, padding: 0, border: "none" }}
         onMouseMove={handleResizeMove}
         onMouseUp={handleResizeEnd}
       >
-        {/* Tira a borda azul: não renderiza Rect */}
-        <Layer>
-          {/* nada aqui */}
-        </Layer>
+        {/* Se quiser borda azul tracejada, descomente abaixo */}
+        {/* <Layer>
+          <Rect
+            x={0}
+            y={0}
+            width={canvasW}
+            height={canvasH}
+            fill=""
+            stroke="#1976d2"
+            strokeWidth={6}
+            dash={[18, 9]}
+            listening={false}
+          />
+        </Layer> */}
         <Layer>
           {nodes.map((node, idx) => (
             <Group
@@ -207,7 +221,7 @@ export default function RelacionamentosVisual() {
       </Stage>
       {/* Título fixo */}
       <div style={{
-        position: "absolute", top: 12, left: 54, fontWeight: 700,
+        position: "absolute", top: 12, left: SIDEBAR_WIDTH + 54, fontWeight: 700,
         fontSize: 20, color: "#1976d2", letterSpacing: 0.25, zIndex: 8
       }}>
         Relacionamentos Visual (Power BI Style)
