@@ -57,7 +57,7 @@ export default function App() {
           sx={{
             flexGrow: 1,
             transition: 'margin 0.2s',
-            //marginLeft: user && sidebarOpen ? `${drawerWidth}px` : 0,
+            marginLeft: user && sidebarOpen ? `${drawerWidth}px` : 0,
             minHeight: '100vh',
             bgcolor: "#f8fafd"
           }}
