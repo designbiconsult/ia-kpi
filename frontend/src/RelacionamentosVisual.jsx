@@ -7,7 +7,7 @@ const MIN_NODE_WIDTH = 150;
 const MAX_NODE_WIDTH = 950;
 const NODE_HEIGHT_BASE = 38;
 const NODE_FIELD_HEIGHT = 30;
-const PADDING = 220; // Espaço extra à direita e embaixo
+const PADDING = 500; // mais espaço extra para expandir à direita
 
 const tabelasFake = [
   { id: "Pedidos", campos: ["ID", "Data", "ClienteID", "Valor", "Status"] },
@@ -33,10 +33,9 @@ export default function RelacionamentosVisual() {
   const [nodes, setNodes] = useState(() => getInitNodes());
   const resizingNode = useRef(null);
 
-  // Calcula dinamicamente a largura e altura do Stage com base nas tabelas
-  const [canvasSize, setCanvasSize] = useState({ width: window.innerWidth, height: window.innerHeight - 2 });
+  // Calcula largura/altura máxima baseada nas tabelas
+  const [canvasSize, setCanvasSize] = useState({ width: window.innerWidth, height: window.innerHeight });
 
-  // Sempre que nodes mudam, recalcula o tamanho do Stage
   useLayoutEffect(() => {
     let maxRight = 0, maxBottom = 0;
     nodes.forEach((n) => {
@@ -45,7 +44,7 @@ export default function RelacionamentosVisual() {
     });
     setCanvasSize({
       width: Math.max(window.innerWidth, maxRight + PADDING),
-      height: Math.max(window.innerHeight - 2, maxBottom + PADDING)
+      height: Math.max(window.innerHeight, maxBottom + 120)
     });
   }, [nodes]);
 
@@ -53,17 +52,14 @@ export default function RelacionamentosVisual() {
   const handleDragMove = (idx, e) => {
     let x = e.target.x();
     let y = e.target.y();
-    const n = nodes[idx];
     x = Math.max(4, x); // margem esquerda
-    y = Math.max(0, y); // margem topo
-    e.target.x(x);
-    e.target.y(y);
+    y = Math.max(0, y); // topo
     setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, x, y } : n));
   };
   const handleDragStart = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: true } : n));
   const handleDragEnd = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: false } : n));
 
-  // Permite expandir para a direita livre, Stage cresce automaticamente!
+  // Permite expandir livre à direita (até MAX_NODE_WIDTH)
   const handleResizeStart = (idx) => {
     resizingNode.current = idx;
     setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isResizing: true } : n));
@@ -74,7 +70,6 @@ export default function RelacionamentosVisual() {
     const n = nodes[idx];
     let mouseX = e.target.getStage().getPointerPosition().x;
     let newWidth = Math.max(MIN_NODE_WIDTH, mouseX - n.x);
-    // Deixa a tabela crescer até MAX_NODE_WIDTH (ou mais, se quiser)
     newWidth = Math.min(newWidth, MAX_NODE_WIDTH);
     setNodes((nds) => nds.map((node, i) => i === idx ? { ...node, width: newWidth } : node));
   };
@@ -83,7 +78,7 @@ export default function RelacionamentosVisual() {
     setNodes((nds) => nds.map((n) => ({ ...n, isResizing: false })));
   };
 
-  // Botão para ajustar viewport SEM centralizar tabelas!
+  // Botão para ajustar viewport
   const stageRef = useRef();
   const handleFitView = () => {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -115,14 +110,11 @@ export default function RelacionamentosVisual() {
   return (
     <div
       style={{
-        width: "100vw",
-        height: "100vh",
+        position: "fixed",
+        inset: 0,
+        zIndex: 2,
         background: "#f8fafd",
-        margin: 0,
-        padding: 0,
-        // O segredo está aqui:
-        overflow: "auto",
-        minWidth: "100vw"
+        overflow: "auto"
       }}
     >
       {/* Botão sempre visível */}
@@ -130,8 +122,8 @@ export default function RelacionamentosVisual() {
         style={{
           position: "fixed",
           top: 18,
-          left: 18,
-          zIndex: 10
+          left: 54,
+          zIndex: 20
         }}
       >
         <IconButton
@@ -226,12 +218,12 @@ export default function RelacionamentosVisual() {
         style={{
           position: "fixed",
           top: 12,
-          left: 54,
+          left: 120,
           fontWeight: 700,
           fontSize: 20,
           color: "#1976d2",
           letterSpacing: 0.25,
-          zIndex: 8
+          zIndex: 20
         }}
       >
         Relacionamentos Visual (Power BI Style)
