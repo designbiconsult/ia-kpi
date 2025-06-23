@@ -70,7 +70,7 @@ export default function RelacionamentosVisual() {
   let mouseX = e.target.getStage().getPointerPosition().x;
   let newWidth = Math.max(MIN_NODE_WIDTH, mouseX - n.x);
   // Só limita pelo máximo permitido, sem se importar com o tamanho do canvas!
-  //newWidth = Math.min(newWidth, MAX_NODE_WIDTH);
+  newWidth = Math.min(newWidth, MAX_NODE_WIDTH);
   setNodes((nds) => nds.map((node, i) => i === idx ? { ...node, width: newWidth } : node));
 };
   const handleResizeEnd = () => {
