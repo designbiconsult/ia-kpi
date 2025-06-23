@@ -7,7 +7,7 @@ const MIN_NODE_WIDTH = 150;
 const MAX_NODE_WIDTH = 950;
 const NODE_HEIGHT_BASE = 38;
 const NODE_FIELD_HEIGHT = 30;
-const PADDING = 200; // Espaço extra à direita e embaixo
+const PADDING = 220; // Espaço extra à direita e embaixo
 
 const tabelasFake = [
   { id: "Pedidos", campos: ["ID", "Data", "ClienteID", "Valor", "Status"] },
@@ -113,21 +113,27 @@ export default function RelacionamentosVisual() {
   };
 
   return (
-    <div style={{
-      width: "100vw",
-      height: "100vh",
-      background: "#f8fafd",
-      margin: 0,
-      padding: 0,
-      overflow: "auto" // Agora sempre permite scroll!
-    }}>
+    <div
+      style={{
+        width: "100vw",
+        height: "100vh",
+        background: "#f8fafd",
+        margin: 0,
+        padding: 0,
+        // O segredo está aqui:
+        overflow: "auto",
+        minWidth: "100vw"
+      }}
+    >
       {/* Botão sempre visível */}
-      <div style={{
-        position: "fixed",
-        top: 18,
-        left: 18,
-        zIndex: 10
-      }}>
+      <div
+        style={{
+          position: "fixed",
+          top: 18,
+          left: 18,
+          zIndex: 10
+        }}
+      >
         <IconButton
           style={{
             border: "2px solid #1976d2",
@@ -216,16 +222,18 @@ export default function RelacionamentosVisual() {
         </Layer>
       </Stage>
       {/* Título fixo */}
-      <div style={{
-        position: "fixed",
-        top: 12,
-        left: 54,
-        fontWeight: 700,
-        fontSize: 20,
-        color: "#1976d2",
-        letterSpacing: 0.25,
-        zIndex: 8
-      }}>
+      <div
+        style={{
+          position: "fixed",
+          top: 12,
+          left: 54,
+          fontWeight: 700,
+          fontSize: 20,
+          color: "#1976d2",
+          letterSpacing: 0.25,
+          zIndex: 8
+        }}
+      >
         Relacionamentos Visual (Power BI Style)
       </div>
     </div>
