@@ -4,7 +4,7 @@ import CropFreeIcon from "@mui/icons-material/CropFree";
 import IconButton from "@mui/material/IconButton";
 
 const MIN_NODE_WIDTH = 150;
-const MAX_NODE_WIDTH = 950;
+const MAX_NODE_WIDTH = 950; // Se quiser sem limite, aumente ou remova
 const NODE_HEIGHT_BASE = 38;
 const NODE_FIELD_HEIGHT = 30;
 
@@ -29,14 +29,18 @@ function getInitNodes() {
 }
 
 export default function RelacionamentosVisual() {
-  const [canvasW, setCanvasW] = useState(window.innerWidth);
+  // Canvas grande para permitir expandir para a direita
+  const [canvasW, setCanvasW] = useState(window.innerWidth * 2); // *2 permite expandir mais!
   const [canvasH, setCanvasH] = useState(window.innerHeight - 2);
   const [nodes, setNodes] = useState(() => getInitNodes());
   const resizingNode = useRef(null);
 
   useLayoutEffect(() => {
+    // Sempre deixa o canvas maior que a tela!
+    setCanvasW(window.innerWidth * 2);
+    setCanvasH(window.innerHeight - 2);
     const update = () => {
-      setCanvasW(window.innerWidth);
+      setCanvasW(window.innerWidth * 2);
       setCanvasH(window.innerHeight - 2);
     };
     window.addEventListener("resize", update);
@@ -49,7 +53,7 @@ export default function RelacionamentosVisual() {
     let y = e.target.y();
     const n = nodes[idx];
     x = Math.max(4, x); // margem esquerda
-    // Agora sem limite para direita
+    // Não limita direita
     y = Math.max(0, Math.min(canvasH - n.height, y));
     e.target.x(x);
     e.target.y(y);
@@ -58,21 +62,20 @@ export default function RelacionamentosVisual() {
   const handleDragStart = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: true } : n));
   const handleDragEnd = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: false } : n));
 
-  // Permite expandir para a direita sem limite visual (até o max)
+  // Permite expandir para a direita (até o MAX_NODE_WIDTH, ou comente para infinito)
   const handleResizeStart = (idx) => {
     resizingNode.current = idx;
     setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isResizing: true } : n));
   };
   const handleResizeMove = (e) => {
-  if (resizingNode.current === null) return;
-  const idx = resizingNode.current;
-  const n = nodes[idx];
-  let mouseX = e.target.getStage().getPointerPosition().x;
-  let newWidth = Math.max(MIN_NODE_WIDTH, mouseX - n.x);
-  // Só limita pelo máximo permitido, sem se importar com o tamanho do canvas!
-  //newWidth = Math.min(newWidth, MAX_NODE_WIDTH);
-  setNodes((nds) => nds.map((node, i) => i === idx ? { ...node, width: newWidth } : node));
-};
+    if (resizingNode.current === null) return;
+    const idx = resizingNode.current;
+    const n = nodes[idx];
+    let mouseX = e.target.getStage().getPointerPosition().x;
+    let newWidth = Math.max(MIN_NODE_WIDTH, mouseX - n.x);
+    //newWidth = Math.min(newWidth, MAX_NODE_WIDTH); // Tire esse limite para ilimitado
+    setNodes((nds) => nds.map((node, i) => i === idx ? { ...node, width: newWidth } : node));
+  };
   const handleResizeEnd = () => {
     resizingNode.current = null;
     setNodes((nds) => nds.map((n) => ({ ...n, isResizing: false })));
@@ -95,8 +98,8 @@ export default function RelacionamentosVisual() {
     maxY = Math.min(maxY + pad, canvasH);
     const viewW = maxX - minX;
     const viewH = maxY - minY;
-    const scaleX = canvasW / viewW;
-    const scaleY = canvasH / viewH;
+    const scaleX = window.innerWidth / viewW; // Use window.innerWidth para ajustar para viewport real!
+    const scaleY = window.innerHeight / viewH;
     const scale = Math.min(scaleX, scaleY, 1.0);
     stageRef.current?.to({
       x: -minX * scale,
@@ -108,18 +111,26 @@ export default function RelacionamentosVisual() {
   };
 
   return (
-    <div style={{
-      width: "100vw", height: "100vh",
-      background: "#f8fafd",
-      margin: 0, padding: 0, overflow: "hidden"
-    }}>
-      {/* Botão sempre visível */}
-      <div style={{
-        position: "absolute",
-        top: 18,
-        left: 18,
-        zIndex: 10
-      }}>
+    <div
+      style={{
+        width: "100vw",
+        height: "100vh",
+        background: "#f8fafd",
+        margin: 0,
+        padding: 0,
+        overflow: "auto", // Permite scroll horizontal!
+        position: "relative"
+      }}
+    >
+      {/* Botão sempre visível, fixo no topo esquerdo */}
+      <div
+        style={{
+          position: "fixed", // FIXO!
+          top: 18,
+          left: 18,
+          zIndex: 99
+        }}
+      >
         <IconButton
           style={{
             border: "2px solid #1976d2",
@@ -137,11 +148,15 @@ export default function RelacionamentosVisual() {
         ref={stageRef}
         width={canvasW}
         height={canvasH}
-        style={{ background: "#f8fafd", margin: 0, padding: 0, border: "none" }}
+        style={{
+          background: "#f8fafd",
+          margin: 0,
+          padding: 0,
+          border: "none"
+        }}
         onMouseMove={handleResizeMove}
         onMouseUp={handleResizeEnd}
       >
-        {/* Tira a borda azul: não renderiza Rect */}
         <Layer>
           {/* nada aqui */}
         </Layer>
@@ -206,10 +221,18 @@ export default function RelacionamentosVisual() {
         </Layer>
       </Stage>
       {/* Título fixo */}
-      <div style={{
-        position: "absolute", top: 12, left: 54, fontWeight: 700,
-        fontSize: 20, color: "#1976d2", letterSpacing: 0.25, zIndex: 8
-      }}>
+      <div
+        style={{
+          position: "fixed",
+          top: 12,
+          left: 54,
+          fontWeight: 700,
+          fontSize: 20,
+          color: "#1976d2",
+          letterSpacing: 0.25,
+          zIndex: 98
+        }}
+      >
         Relacionamentos Visual (Power BI Style)
       </div>
     </div>
