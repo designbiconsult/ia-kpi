@@ -4,10 +4,11 @@ import CropFreeIcon from "@mui/icons-material/CropFree";
 import IconButton from "@mui/material/IconButton";
 
 const MIN_NODE_WIDTH = 150;
-const MAX_NODE_WIDTH = 950; // Se quiser sem limite, aumente ou remova
+const MAX_NODE_WIDTH = 950;
 const NODE_HEIGHT_BASE = 38;
 const NODE_FIELD_HEIGHT = 30;
 
+// Tabelas exemplo
 const tabelasFake = [
   { id: "Pedidos", campos: ["ID", "Data", "ClienteID", "Valor", "Status"] },
   { id: "Clientes", campos: ["ID", "Nome", "Cidade", "UF"] },
@@ -29,19 +30,17 @@ function getInitNodes() {
 }
 
 export default function RelacionamentosVisual() {
-  // Canvas grande para permitir expandir para a direita
-  const [canvasW, setCanvasW] = useState(window.innerWidth * 2); // *2 permite expandir mais!
-  const [canvasH, setCanvasH] = useState(window.innerHeight - 2);
+  // O Stage é propositalmente *maior* do que a tela para permitir expandir tabelas para a direita
+  const [canvasW, setCanvasW] = useState(window.innerWidth * 3); // 3x largura da tela!
+  const [canvasH, setCanvasH] = useState(window.innerHeight);
   const [nodes, setNodes] = useState(() => getInitNodes());
   const resizingNode = useRef(null);
 
   useLayoutEffect(() => {
-    // Sempre deixa o canvas maior que a tela!
-    setCanvasW(window.innerWidth * 2);
-    setCanvasH(window.innerHeight - 2);
+    // Mantém sempre o Stage bem largo
     const update = () => {
-      setCanvasW(window.innerWidth * 2);
-      setCanvasH(window.innerHeight - 2);
+      setCanvasW(window.innerWidth * 3);
+      setCanvasH(window.innerHeight);
     };
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
@@ -53,29 +52,43 @@ export default function RelacionamentosVisual() {
     let y = e.target.y();
     const n = nodes[idx];
     x = Math.max(4, x); // margem esquerda
-    // Não limita direita
+    // Não limita direita!
     y = Math.max(0, Math.min(canvasH - n.height, y));
     e.target.x(x);
     e.target.y(y);
     setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, x, y } : n));
   };
-  const handleDragStart = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: true } : n));
-  const handleDragEnd = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: false } : n));
 
-  // Permite expandir para a direita (até o MAX_NODE_WIDTH, ou comente para infinito)
+  const handleDragStart = (idx) =>
+    setNodes((nds) =>
+      nds.map((n, i) => (i === idx ? { ...n, isDragging: true } : n))
+    );
+  const handleDragEnd = (idx) =>
+    setNodes((nds) =>
+      nds.map((n, i) => (i === idx ? { ...n, isDragging: false } : n))
+    );
+
+  // Permite expandir para a direita até o máximo do Stage
   const handleResizeStart = (idx) => {
     resizingNode.current = idx;
-    setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isResizing: true } : n));
+    setNodes((nds) =>
+      nds.map((n, i) => (i === idx ? { ...n, isResizing: true } : n))
+    );
   };
+
   const handleResizeMove = (e) => {
     if (resizingNode.current === null) return;
     const idx = resizingNode.current;
     const n = nodes[idx];
     let mouseX = e.target.getStage().getPointerPosition().x;
     let newWidth = Math.max(MIN_NODE_WIDTH, mouseX - n.x);
-    //newWidth = Math.min(newWidth, MAX_NODE_WIDTH); // Tire esse limite para ilimitado
-    setNodes((nds) => nds.map((node, i) => i === idx ? { ...node, width: newWidth } : node));
+    // Só limite pelo máximo da tabela, não pelo canvas (se quiser infinito, remova MAX_NODE_WIDTH)
+    newWidth = Math.min(newWidth, MAX_NODE_WIDTH);
+    setNodes((nds) =>
+      nds.map((node, i) => (i === idx ? { ...node, width: newWidth } : node))
+    );
   };
+
   const handleResizeEnd = () => {
     resizingNode.current = null;
     setNodes((nds) => nds.map((n) => ({ ...n, isResizing: false })));
@@ -84,8 +97,11 @@ export default function RelacionamentosVisual() {
   // Botão para ajustar viewport SEM centralizar tabelas!
   const stageRef = useRef();
   const handleFitView = () => {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    nodes.forEach(n => {
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
+    nodes.forEach((n) => {
       minX = Math.min(minX, n.x);
       minY = Math.min(minY, n.y);
       maxX = Math.max(maxX, n.x + n.width);
@@ -98,7 +114,7 @@ export default function RelacionamentosVisual() {
     maxY = Math.min(maxY + pad, canvasH);
     const viewW = maxX - minX;
     const viewH = maxY - minY;
-    const scaleX = window.innerWidth / viewW; // Use window.innerWidth para ajustar para viewport real!
+    const scaleX = window.innerWidth / viewW;
     const scaleY = window.innerHeight / viewH;
     const scale = Math.min(scaleX, scaleY, 1.0);
     stageRef.current?.to({
