@@ -4,11 +4,9 @@ import CropFreeIcon from "@mui/icons-material/CropFree";
 import IconButton from "@mui/material/IconButton";
 
 const MIN_NODE_WIDTH = 150;
-const MAX_NODE_WIDTH = 950;
 const NODE_HEIGHT_BASE = 38;
 const NODE_FIELD_HEIGHT = 30;
 
-// Tabelas exemplo
 const tabelasFake = [
   { id: "Pedidos", campos: ["ID", "Data", "ClienteID", "Valor", "Status"] },
   { id: "Clientes", campos: ["ID", "Nome", "Cidade", "UF"] },
@@ -30,17 +28,16 @@ function getInitNodes() {
 }
 
 export default function RelacionamentosVisual() {
-  // O Stage é propositalmente *maior* do que a tela para permitir expandir tabelas para a direita
-  const [canvasW, setCanvasW] = useState(window.innerWidth * 3); // 3x largura da tela!
-  const [canvasH, setCanvasH] = useState(window.innerHeight);
+  // Canvas muito maior que a tela para permitir expansão infinita à direita
+  const [canvasW, setCanvasW] = useState(window.innerWidth * 3);
+  const [canvasH, setCanvasH] = useState(window.innerHeight - 2);
   const [nodes, setNodes] = useState(() => getInitNodes());
   const resizingNode = useRef(null);
 
   useLayoutEffect(() => {
-    // Mantém sempre o Stage bem largo
     const update = () => {
-      setCanvasW(window.innerWidth * 3);
-      setCanvasH(window.innerHeight);
+      setCanvasW(window.innerWidth * 3); // 3x mais largo
+      setCanvasH(window.innerHeight - 2);
     };
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
@@ -51,44 +48,29 @@ export default function RelacionamentosVisual() {
     let x = e.target.x();
     let y = e.target.y();
     const n = nodes[idx];
-    x = Math.max(4, x); // margem esquerda
-    // Não limita direita!
+    x = Math.max(4, x);
+    // Não trava à direita
     y = Math.max(0, Math.min(canvasH - n.height, y));
     e.target.x(x);
     e.target.y(y);
     setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, x, y } : n));
   };
+  const handleDragStart = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: true } : n));
+  const handleDragEnd = (idx) => setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isDragging: false } : n));
 
-  const handleDragStart = (idx) =>
-    setNodes((nds) =>
-      nds.map((n, i) => (i === idx ? { ...n, isDragging: true } : n))
-    );
-  const handleDragEnd = (idx) =>
-    setNodes((nds) =>
-      nds.map((n, i) => (i === idx ? { ...n, isDragging: false } : n))
-    );
-
-  // Permite expandir para a direita até o máximo do Stage
+  // Permite expandir para a direita livremente (limitado só pelo canvasW, que é gigante)
   const handleResizeStart = (idx) => {
     resizingNode.current = idx;
-    setNodes((nds) =>
-      nds.map((n, i) => (i === idx ? { ...n, isResizing: true } : n))
-    );
+    setNodes((nds) => nds.map((n, i) => i === idx ? { ...n, isResizing: true } : n));
   };
-
   const handleResizeMove = (e) => {
     if (resizingNode.current === null) return;
     const idx = resizingNode.current;
     const n = nodes[idx];
     let mouseX = e.target.getStage().getPointerPosition().x;
     let newWidth = Math.max(MIN_NODE_WIDTH, mouseX - n.x);
-    // Só limite pelo máximo da tabela, não pelo canvas (se quiser infinito, remova MAX_NODE_WIDTH)
-    newWidth = Math.min(newWidth, MAX_NODE_WIDTH);
-    setNodes((nds) =>
-      nds.map((node, i) => (i === idx ? { ...node, width: newWidth } : node))
-    );
+    setNodes((nds) => nds.map((node, i) => i === idx ? { ...node, width: newWidth } : node));
   };
-
   const handleResizeEnd = () => {
     resizingNode.current = null;
     setNodes((nds) => nds.map((n) => ({ ...n, isResizing: false })));
@@ -97,11 +79,8 @@ export default function RelacionamentosVisual() {
   // Botão para ajustar viewport SEM centralizar tabelas!
   const stageRef = useRef();
   const handleFitView = () => {
-    let minX = Infinity,
-      minY = Infinity,
-      maxX = -Infinity,
-      maxY = -Infinity;
-    nodes.forEach((n) => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    nodes.forEach(n => {
       minX = Math.min(minX, n.x);
       minY = Math.min(minY, n.y);
       maxX = Math.max(maxX, n.x + n.width);
@@ -115,7 +94,7 @@ export default function RelacionamentosVisual() {
     const viewW = maxX - minX;
     const viewH = maxY - minY;
     const scaleX = window.innerWidth / viewW;
-    const scaleY = window.innerHeight / viewH;
+    const scaleY = canvasH / viewH;
     const scale = Math.min(scaleX, scaleY, 1.0);
     stageRef.current?.to({
       x: -minX * scale,
@@ -127,26 +106,21 @@ export default function RelacionamentosVisual() {
   };
 
   return (
-    <div
-      style={{
-        width: "100vw",
-        height: "100vh",
-        background: "#f8fafd",
-        margin: 0,
-        padding: 0,
-        overflow: "auto", // Permite scroll horizontal!
-        position: "relative"
-      }}
-    >
-      {/* Botão sempre visível, fixo no topo esquerdo */}
-      <div
-        style={{
-          position: "fixed", // FIXO!
-          top: 18,
-          left: 18,
-          zIndex: 99
-        }}
-      >
+    <div style={{
+      width: "100vw",
+      height: "100vh",
+      background: "#f8fafd",
+      margin: 0,
+      padding: 0,
+      overflow: "auto" // Permite scroll!
+    }}>
+      {/* Botão sempre visível */}
+      <div style={{
+        position: "fixed",
+        top: 18,
+        left: 18,
+        zIndex: 10
+      }}>
         <IconButton
           style={{
             border: "2px solid #1976d2",
@@ -168,11 +142,13 @@ export default function RelacionamentosVisual() {
           background: "#f8fafd",
           margin: 0,
           padding: 0,
-          border: "none"
+          border: "none",
+          display: "block"
         }}
         onMouseMove={handleResizeMove}
         onMouseUp={handleResizeEnd}
       >
+        {/* Nenhum limite lateral */}
         <Layer>
           {/* nada aqui */}
         </Layer>
@@ -237,18 +213,16 @@ export default function RelacionamentosVisual() {
         </Layer>
       </Stage>
       {/* Título fixo */}
-      <div
-        style={{
-          position: "fixed",
-          top: 12,
-          left: 54,
-          fontWeight: 700,
-          fontSize: 20,
-          color: "#1976d2",
-          letterSpacing: 0.25,
-          zIndex: 98
-        }}
-      >
+      <div style={{
+        position: "fixed",
+        top: 12,
+        left: 54,
+        fontWeight: 700,
+        fontSize: 20,
+        color: "#1976d2",
+        letterSpacing: 0.25,
+        zIndex: 8
+      }}>
         Relacionamentos Visual (Power BI Style)
       </div>
     </div>
